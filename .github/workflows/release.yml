@@ -16,7 +16,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Cache electron-builder
@@ -25,16 +25,12 @@ jobs:
           path: ~\AppData\Local\electron-builder\Cache
           key: ebuilder-${{ hashFiles('package-lock.json') }}
 
-      - uses: microsoft/setup-msbuild@v2
+      - uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install dependencies
-        env:
-          GYP_MSVS_VERSION: '2022'
         run: npm ci
 
       - name: Build installer
-        env:
-          GYP_MSVS_VERSION: '2022'
         run: npm run dist
 
       - name: Create GitHub Release
