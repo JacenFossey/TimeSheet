@@ -2,16 +2,40 @@
   "name": "timesheet",
   "version": "1.0.0",
   "description": "Daily Timesheet",
+  "author": "Jacen Fossey",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "postinstall": "electron-rebuild -f -w better-sqlite3"
+    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "dist": "electron-builder"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.7.1",
-    "electron": "^42.4.1"
+    "electron": "^42.4.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.keypak.timesheet",
+    "productName": "Timesheet",
+    "npmRebuild": false,
+    "asarUnpack": ["node_modules/better-sqlite3/**/*"],
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "node_modules/**/*",
+      "!node_modules/.cache"
+    ],
+    "win": {
+      "target": "nsis",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": true,
+      "installerIcon": null
+    }
   }
 }
