@@ -227,9 +227,9 @@
   .cat-table { width: 100%; border-collapse: collapse; }
   .cat-table tr { border-bottom: 1px solid var(--border); }
   .cat-table tr:last-child { border-bottom: none; }
-  .cat-table td { padding: 6px 4px; font-size: 12px; vertical-align: middle; }
-  .cat-table td:last-child { text-align: right; font-weight: 600; color: var(--text); }
-  .ct-bar { height: 5px; border-radius: 2px; margin-top: 3px; transition: width .3s; }
+  .cat-table td { padding: 8px 6px; font-size: 12px; vertical-align: middle; }
+  .cat-table td:last-child { text-align: right; font-weight: 600; color: var(--text); white-space: nowrap; padding-left: 12px; }
+  .ct-bar { height: 4px; border-radius: 2px; margin-top: 4px; opacity: 0.5; transition: width .3s; }
 
   /* ══════════════════════════════════════════════════════════════
      EXPORT TAB
@@ -986,8 +986,14 @@ async function renderStats(period) {
     const pct = catTotal > 0 ? Math.round(count / catTotal * 100) : 0;
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><span class="dot" style="background:${cat.color};margin-right:5px;display:inline-block"></span>${cat.label}</td>
-      <td>${(count*0.25).toFixed(1)}h <span style="color:var(--text-muted);font-weight:400">(${pct}%)</span></td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="dot" style="background:${cat.color};width:10px;height:10px;flex-shrink:0"></span>
+          <span>${cat.label}</span>
+        </div>
+        <div class="ct-bar" style="background:${cat.color};width:${pct}%"></div>
+      </td>
+      <td>${(count*0.25).toFixed(1)}h<br><span style="color:var(--text-muted);font-weight:400;font-size:10px">${pct}%</span></td>
     `;
     catTable.appendChild(tr);
   });
