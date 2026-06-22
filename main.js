@@ -1,102 +1,107 @@
 const { app, BrowserWindow, ipcMain, dialog, screen } = require('electron');
-const path    = require('path');
-const fs      = require('fs');
-const { Database } = require('node-sqlite3-wasm');
+const path = require('path');
+const fs   = require('fs');
 
-// ── Database ──────────────────────────────────────────────────────────────────
+// ── Storage ───────────────────────────────────────────────────────────────────
+// One JSON file per day in userData/days/. categories.json for category list.
+// No database, no WASM, no locking.
 
-const DB_PATH = path.join(app.getPath('userData'), 'timesheet.db');
-let db, stmts;
+let DAYS_DIR, CATS_FILE;
 
-function openDb() {
-  db = new Database(DB_PATH);
-  // ponytail: DELETE mode instead of WAL — avoids -wal/-shm lock files surviving crashes
-  db.exec("PRAGMA journal_mode = DELETE");
-  db.exec("PRAGMA foreign_keys = ON");
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS slots (
-      date     TEXT NOT NULL,
-      slot_key TEXT NOT NULL,
-      side     TEXT NOT NULL CHECK(side IN ('planned','actual')),
-      cat      TEXT NOT NULL DEFAULT 'none',
-      text     TEXT NOT NULL DEFAULT '',
-      PRIMARY KEY (date, slot_key, side)
-    );
-    CREATE TABLE IF NOT EXISTS categories (
-      id         TEXT PRIMARY KEY,
-      label      TEXT NOT NULL,
-      color      TEXT NOT NULL,
-      sort_order INTEGER NOT NULL DEFAULT 0
-    );
-  `);
-
-  if (db.prepare('SELECT COUNT(*) AS n FROM categories').get().n === 0) {
-    const ins = db.prepare('INSERT INTO categories (id, label, color, sort_order) VALUES (?, ?, ?, ?)');
-    db.exec('BEGIN');
-    try {
-      [
-        ['none',     'None',        '#2e3350',  0],
-        ['deep',     'Deep Work',   '#3b82f6',  1],
-        ['meetings', 'Meetings',    '#a855f7',  2],
-        ['admin',    'Admin',       '#f97316',  3],
-        ['break',    'Break',       '#22c55e',  4],
-        ['personal', 'Personal',    '#06b6d4',  5],
-        ['exercise', 'Exercise',    '#ef4444',  6],
-        ['learning', 'Learning',    '#eab308',  7],
-        ['quoting',  'Quoting',     '#0d9488',  8],
-        ['wasted',   'Wasted Time', '#991b1b',  9],
-        ['other',    'Other',       '#6b7280', 10],
-      ].forEach(r => ins.run(r));
-      db.exec('COMMIT');
-    } catch (e) { db.exec('ROLLBACK'); throw e; }
-  }
-
-  stmts = {
-    getDay:          db.prepare('SELECT slot_key, side, cat, text FROM slots WHERE date = ?'),
-    upsertSlot:      db.prepare(`
-      INSERT INTO slots (date, slot_key, side, cat, text) VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(date, slot_key, side) DO UPDATE SET cat=excluded.cat, text=excluded.text
-    `),
-    deleteDay:       db.prepare('DELETE FROM slots WHERE date = ?'),
-    getSlotsInRange: db.prepare(`
-      SELECT date, slot_key, side, cat, text FROM slots
-      WHERE date >= ? AND date <= ? ORDER BY date, slot_key, side
-    `),
-    getCats:         db.prepare('SELECT id, label, color FROM categories ORDER BY sort_order'),
-    upsertCat:       db.prepare(`
-      INSERT INTO categories (id, label, color, sort_order) VALUES (?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET label=excluded.label, color=excluded.color, sort_order=excluded.sort_order
-    `),
-    clearCats:       db.prepare('DELETE FROM categories'),
-  };
+function initPaths() {
+  DAYS_DIR  = path.join(app.getPath('userData'), 'days');
+  CATS_FILE = path.join(app.getPath('userData'), 'categories.json');
+  if (!fs.existsSync(DAYS_DIR)) fs.mkdirSync(DAYS_DIR, { recursive: true });
 }
 
-function withTransaction(fn) {
-  db.exec('BEGIN');
-  try { fn(); db.exec('COMMIT'); }
-  catch (e) { db.exec('ROLLBACK'); throw e; }
+function readDay(date) {
+  try { return JSON.parse(fs.readFileSync(path.join(DAYS_DIR, `${date}.json`), 'utf8')); }
+  catch { return {}; }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function rowsToDay(rows) {
-  const data = {};
-  for (const row of rows) {
-    if (!data[row.slot_key]) data[row.slot_key] = {};
-    data[row.slot_key][row.side] = { cat: row.cat, text: row.text };
+function writeDay(date, data) {
+  // Strip empty slots before writing
+  const clean = {};
+  for (const [slot, sides] of Object.entries(data)) {
+    const s = {};
+    for (const [side, val] of Object.entries(sides)) {
+      if (val && (val.cat !== 'none' || val.text)) s[side] = val;
+    }
+    if (Object.keys(s).length) clean[slot] = s;
   }
-  return data;
+  const file = path.join(DAYS_DIR, `${date}.json`);
+  if (Object.keys(clean).length) {
+    // ponytail: atomic write via rename — safe on NTFS
+    const tmp = file + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(clean), 'utf8');
+    fs.renameSync(tmp, file);
+  } else {
+    try { fs.unlinkSync(file); } catch {}
+  }
 }
 
-function rowsToRange(rows) {
-  const all = {};
-  for (const row of rows) {
-    if (!all[row.date]) all[row.date] = {};
-    if (!all[row.date][row.slot_key]) all[row.date][row.slot_key] = {};
-    all[row.date][row.slot_key][row.side] = { cat: row.cat, text: row.text };
-  }
-  return all;
+function loadRange(from, to) {
+  const result = {};
+  try {
+    for (const file of fs.readdirSync(DAYS_DIR).sort()) {
+      if (!file.endsWith('.json')) continue;
+      const date = file.slice(0, -5);
+      if (date >= from && date <= to) {
+        try { result[date] = JSON.parse(fs.readFileSync(path.join(DAYS_DIR, file), 'utf8')); }
+        catch {}
+      }
+    }
+  } catch {}
+  return result;
+}
+
+const DEFAULT_CATS = [
+  { id: 'none',     label: 'None',        color: '#2e3350' },
+  { id: 'deep',     label: 'Deep Work',   color: '#3b82f6' },
+  { id: 'meetings', label: 'Meetings',    color: '#a855f7' },
+  { id: 'admin',    label: 'Admin',       color: '#f97316' },
+  { id: 'break',    label: 'Break',       color: '#22c55e' },
+  { id: 'personal', label: 'Personal',    color: '#06b6d4' },
+  { id: 'exercise', label: 'Exercise',    color: '#ef4444' },
+  { id: 'learning', label: 'Learning',    color: '#eab308' },
+  { id: 'quoting',  label: 'Quoting',     color: '#0d9488' },
+  { id: 'wasted',   label: 'Wasted Time', color: '#991b1b' },
+  { id: 'other',    label: 'Other',       color: '#6b7280' },
+];
+
+function readCategories() {
+  try { return JSON.parse(fs.readFileSync(CATS_FILE, 'utf8')); }
+  catch { return DEFAULT_CATS; }
+}
+
+function writeCategories(cats) {
+  fs.writeFileSync(CATS_FILE, JSON.stringify(cats), 'utf8');
+}
+
+// ── Migration from SQLite (v1.1/v1.2) ────────────────────────────────────────
+// Runs once on first launch after upgrade. Safe to remove after v1.4.0.
+function migrateFromSqlite() {
+  const dbPath = path.join(app.getPath('userData'), 'timesheet.db');
+  if (!fs.existsSync(dbPath) || fs.existsSync(CATS_FILE)) return;
+  try {
+    const { Database } = require('node-sqlite3-wasm');
+    const db = new Database(dbPath);
+
+    const cats = db.prepare('SELECT id, label, color FROM categories ORDER BY sort_order').all();
+    if (cats.length) writeCategories(cats);
+
+    const slots = db.prepare('SELECT date, slot_key, side, cat, text FROM slots').all();
+    const byDate = {};
+    for (const r of slots) {
+      if (!byDate[r.date]) byDate[r.date] = {};
+      if (!byDate[r.date][r.slot_key]) byDate[r.date][r.slot_key] = {};
+      byDate[r.date][r.slot_key][r.side] = { cat: r.cat, text: r.text };
+    }
+    for (const [date, data] of Object.entries(byDate)) writeDay(date, data);
+
+    db.close();
+    fs.renameSync(dbPath, dbPath + '.migrated');
+  } catch {} // silently skip — user starts fresh if migration fails
 }
 
 // ── Windows ───────────────────────────────────────────────────────────────────
@@ -106,8 +111,7 @@ let mainWin = null, reminderWin = null;
 function createMain() {
   mainWin = new BrowserWindow({
     width: 1200, height: 900, minWidth: 800, minHeight: 600,
-    title: 'Timesheet',
-    backgroundColor: '#0f1117',
+    title: 'Timesheet', backgroundColor: '#0f1117',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
   });
   mainWin.loadFile(path.join(__dirname, 'src', 'index.html'));
@@ -134,29 +138,11 @@ function createReminder(slotKey, slotLabel, plannedData) {
 
 // ── IPC ───────────────────────────────────────────────────────────────────────
 
-ipcMain.handle('loadDay',        (_, date)      => rowsToDay(stmts.getDay.all([date])));
-ipcMain.handle('loadRange',      (_, from, to)  => rowsToRange(stmts.getSlotsInRange.all([from, to])));
-ipcMain.handle('loadCategories', ()             => stmts.getCats.all());
-
-ipcMain.handle('saveDay', (_, date, data) => {
-  withTransaction(() => {
-    stmts.deleteDay.run([date]);
-    for (const [slot_key, sides] of Object.entries(data)) {
-      for (const [side, val] of Object.entries(sides)) {
-        if (val && (val.cat !== 'none' || val.text)) {
-          stmts.upsertSlot.run([date, slot_key, side, val.cat || 'none', val.text || '']);
-        }
-      }
-    }
-  });
-});
-
-ipcMain.handle('saveCategories', (_, cats) => {
-  withTransaction(() => {
-    stmts.clearCats.run();
-    cats.forEach((cat, i) => stmts.upsertCat.run([cat.id, cat.label, cat.color, i]));
-  });
-});
+ipcMain.handle('loadDay',        (_, date)       => readDay(date));
+ipcMain.handle('loadRange',      (_, from, to)   => loadRange(from, to));
+ipcMain.handle('saveDay',        (_, date, data) => writeDay(date, data));
+ipcMain.handle('loadCategories', ()              => readCategories());
+ipcMain.handle('saveCategories', (_, cats)       => writeCategories(cats));
 
 ipcMain.handle('exportData', async (_, from, to) => {
   const { filePath } = await dialog.showSaveDialog(mainWin, {
@@ -165,10 +151,15 @@ ipcMain.handle('exportData', async (_, from, to) => {
     filters: [{ name: 'CSV', extensions: ['csv'] }],
   });
   if (!filePath) return { cancelled: true };
-  const rows  = stmts.getSlotsInRange.all([from, to]);
   const esc   = s => `"${(s||'').replace(/"/g,'""')}"`;
-  const lines = ['Date,Time,Side,Category,Text',
-    ...rows.map(r => [r.date, r.slot_key, r.side, r.cat, esc(r.text)].join(','))];
+  const lines = ['Date,Time,Side,Category,Text'];
+  for (const [date, dayData] of Object.entries(loadRange(from, to)).sort()) {
+    for (const [slot_key, sides] of Object.entries(dayData)) {
+      for (const [side, val] of Object.entries(sides)) {
+        lines.push([date, slot_key, side, val.cat, esc(val.text)].join(','));
+      }
+    }
+  }
   fs.writeFileSync(filePath, lines.join('\n'), 'utf8');
   return { filePath };
 });
@@ -180,12 +171,16 @@ ipcMain.handle('exportJson', async (_, from, to) => {
     filters: [{ name: 'JSON', extensions: ['json'] }],
   });
   if (!filePath) return { cancelled: true };
-  fs.writeFileSync(filePath, JSON.stringify(rowsToRange(stmts.getSlotsInRange.all([from, to])), null, 2), 'utf8');
+  fs.writeFileSync(filePath, JSON.stringify(loadRange(from, to), null, 2), 'utf8');
   return { filePath };
 });
 
 ipcMain.handle('submitReminder', (_, slotKey, cat, text) => {
-  stmts.upsertSlot.run([todayString(), slotKey, 'actual', cat || 'none', text || '']);
+  const today = todayString();
+  const data  = readDay(today);
+  if (!data[slotKey]) data[slotKey] = {};
+  data[slotKey].actual = { cat: cat || 'none', text: text || '' };
+  writeDay(today, data);
   if (mainWin) mainWin.webContents.send('refreshDay');
   if (reminderWin) reminderWin.close();
 });
@@ -200,7 +195,7 @@ function todayString() {
 }
 
 function msUntilNextQuarter() {
-  const now = new Date();
+  const now    = new Date();
   const msIntoQ = ((now.getMinutes() % 15) * 60 + now.getSeconds()) * 1000 + now.getMilliseconds();
   return 15 * 60 * 1000 - msIntoQ;
 }
@@ -221,7 +216,7 @@ function prevSlotInfo() {
 function fireReminder() {
   const slot = prevSlotInfo();
   if (!slot) return;
-  const dayData = rowsToDay(stmts.getDay.all([todayString()]));
+  const dayData = readDay(todayString());
   createReminder(slot.key, slot.label, (dayData[slot.key] && dayData[slot.key].planned) || null);
 }
 
@@ -242,14 +237,14 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
-    openDb();
+    initPaths();
+    migrateFromSqlite();
     createMain();
     scheduleReminders();
     app.on('activate', () => { if (!mainWin) createMain(); });
   });
 
   app.on('window-all-closed', () => {
-    if (db) db.close();
     if (process.platform !== 'darwin') app.quit();
   });
 }
