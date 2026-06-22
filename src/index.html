@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Timesheet</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3350;
+    --text: #e2e8f0;
+    --text-muted: #8892a4;
+    --accent: #4f8ef7;
+    --hour-line: #2a2f4a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; min-height: 100vh; display: flex; flex-direction: column; }
+
+  /* ── Tabs ── */
+  .tab-bar {
+    display: flex;
+    align-items: center;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 20px;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .tab-bar-title { font-size: 15px; font-weight: 700; color: var(--text); margin-right: 20px; }
+  .tab-btn {
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    padding: 12px 16px; font-size: 13px; font-family: inherit; font-weight: 500;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+    transition: color .15s, border-color .15s;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* ── Tab panels ── */
+  .tab-panel { display: none; flex: 1; min-height: 0; overflow: hidden; }
+  .tab-panel.active { display: flex; flex-direction: column; }
+
+  /* ══════════════════════════════════════════════════════════════
+     TIMESHEET TAB
+  ══════════════════════════════════════════════════════════════ */
+
+  /* ── Header ── */
+  .ts-header {
+    position: sticky; top: 0; z-index: 100;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 10px 20px; display: flex; align-items: center; gap: 16px; flex-shrink: 0;
+  }
+  .date-nav { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .date-nav button {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; width: 30px; height: 30px; cursor: pointer; font-size: 15px;
+    display: flex; align-items: center; justify-content: center; transition: background .15s;
+  }
+  .date-nav button:hover { background: var(--border); }
+  #dateLabel { font-weight: 600; font-size: 14px; min-width: 160px; text-align: center; cursor: pointer; }
+  #dateLabel:hover { color: var(--accent); }
+  #dateInput { display: none; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 4px 8px; font-size: 13px; }
+  .today-btn { background: var(--accent) !important; color: #fff !important; border-color: var(--accent) !important; width: auto !important; padding: 0 10px !important; font-size: 12px !important; font-weight: 600; }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    padding: 8px 20px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-muted);
+    cursor: pointer; padding: 2px 6px; border-radius: 12px; border: 1px solid transparent;
+    transition: border-color .15s;
+  }
+  .legend-item:hover { border-color: var(--border); }
+  .legend-item.active-filter { border-color: var(--accent); color: var(--text); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .legend-manage-btn {
+    margin-left: auto; background: none; border: 1px solid var(--border);
+    color: var(--text-muted); border-radius: 12px; padding: 2px 8px; font-size: 11px;
+    cursor: pointer; transition: border-color .15s, color .15s; white-space: nowrap;
+  }
+  .legend-manage-btn:hover { border-color: var(--accent); color: var(--text); }
+
+  /* ── Scrollable body area ── */
+  .ts-scroll { flex: 1; overflow-y: auto; }
+
+  /* ── Page body ── */
+  .page-body {
+    display: flex; align-items: flex-start; gap: 16px;
+    max-width: 1080px; margin: 0 auto; padding: 0 20px 60px;
+  }
+  .left-col { flex: 1; min-width: 0; }
+
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    position: sticky; top: 0; background: var(--bg);
+    padding: 8px 6px; text-align: left; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted);
+    border-bottom: 1px solid var(--border); z-index: 50;
+  }
+  thead th.col-time { width: 72px; }
+  thead th.col-planned, thead th.col-actual { width: calc((100% - 72px) / 2); }
+  tbody tr { transition: background .1s; }
+  tbody tr:hover { background: rgba(255,255,255,.025); }
+  tbody tr.hour-start td { border-top: 1px solid var(--hour-line); }
+  td { padding: 2px 4px; vertical-align: middle; }
+  td.col-time { color: var(--text-muted); font-size: 11px; font-weight: 500; white-space: nowrap; padding-left: 0; user-select: none; }
+  tr.hour-start td.col-time { color: var(--text); font-size: 12px; font-weight: 700; }
+
+  .slot {
+    display: flex; align-items: center; gap: 4px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px;
+    min-height: 28px; transition: border-color .15s;
+  }
+  .slot:focus-within { border-color: var(--accent); background: var(--surface2); }
+  .cat-btn { width: 12px; height: 12px; border-radius: 50%; border: none; cursor: pointer; flex-shrink: 0; transition: transform .1s, opacity .15s; opacity: .85; }
+  .cat-btn:hover { transform: scale(1.25); opacity: 1; }
+  .slot-text { flex: 1; background: transparent; border: none; outline: none; color: var(--text); font-size: 12px; font-family: inherit; min-width: 0; line-height: 1.3; }
+  .slot-text::placeholder { color: var(--text-muted); opacity: .5; }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 230px; flex-shrink: 0; position: sticky; top: 8px;
+    max-height: calc(100vh - 130px); overflow-y: auto; display: flex;
+    flex-direction: column; gap: 12px; padding-top: 10px; padding-bottom: 20px; scrollbar-width: none;
+  }
+  .sidebar::-webkit-scrollbar { display: none; }
+  .sidebar-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+  .card-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); margin-bottom: 12px; }
+
+  #donutChart { display: block; margin: 0 auto 12px; }
+  .chart-legend { display: flex; flex-direction: column; gap: 5px; }
+  .chart-legend-row { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-muted); }
+  .chart-legend-row .dot { width: 8px; height: 8px; flex-shrink: 0; }
+  .chart-legend-row .cl-label { flex: 1; }
+  .chart-legend-row .cl-val { color: var(--text); font-weight: 600; font-size: 11px; }
+
+  /* ── Weekly overview ── */
+  .week-grid { display: flex; flex-direction: column; gap: 5px; }
+  .week-row { display: flex; align-items: center; gap: 7px; cursor: pointer; border-radius: 6px; padding: 4px 5px; transition: background .12s; }
+  .week-row:hover { background: var(--surface2); }
+  .week-row.week-today { background: rgba(79,142,247,.08); }
+  .week-row.week-selected { background: rgba(79,142,247,.14); }
+  .week-label { display: flex; flex-direction: column; align-items: center; width: 28px; flex-shrink: 0; }
+  .week-day { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); line-height: 1; }
+  .week-num { font-size: 13px; font-weight: 700; color: var(--text); line-height: 1.2; }
+  .week-row.week-today .week-num { color: var(--accent); }
+  .week-bar-wrap { flex: 1; height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; display: flex; }
+  .week-seg { height: 100%; transition: width .3s ease; }
+  .week-hours { font-size: 10px; font-weight: 600; color: var(--text-muted); width: 26px; text-align: right; flex-shrink: 0; }
+
+  tr.filtered-out { display: none; }
+
+  /* ── Category picker popup ── */
+  .cat-picker {
+    position: fixed; z-index: 999; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px; display: none; flex-direction: column; gap: 4px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.5); min-width: 150px;
+  }
+  .cat-picker.open { display: flex; }
+  .cat-picker-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); margin-bottom: 4px; padding: 0 2px; }
+  .cat-opt { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; color: var(--text); transition: background .1s; border: 1px solid transparent; }
+  .cat-opt:hover { background: var(--border); }
+  .cat-opt.selected { border-color: rgba(255,255,255,.15); background: rgba(255,255,255,.06); }
+  .cat-opt .dot { width: 10px; height: 10px; }
+
+  /* ── Category manager modal ── */
+  .cat-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 300; display: none; align-items: center; justify-content: center; }
+  .cat-modal-overlay.open { display: flex; }
+  .cat-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; width: 320px; max-height: 80vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+  .cat-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .cat-modal-title { font-size: 14px; font-weight: 700; }
+  .cat-modal-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; padding: 2px 6px; border-radius: 4px; }
+  .cat-modal-close:hover { background: var(--border); color: var(--text); }
+  .cat-list-item { display: flex; align-items: center; gap: 10px; padding: 7px 4px; border-bottom: 1px solid var(--border); }
+  .cat-list-swatch { width: 13px; height: 13px; border-radius: 50%; flex-shrink: 0; }
+  .cat-list-name { flex: 1; font-size: 13px; }
+  .cat-delete-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 15px; padding: 1px 5px; border-radius: 4px; line-height: 1; }
+  .cat-delete-btn:hover { background: rgba(239,68,68,.2); color: #ef4444; }
+  .cat-delete-btn:disabled { opacity: .25; cursor: default; pointer-events: none; }
+  .cat-add-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .cat-add-row input[type="color"] { width: 34px; height: 34px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); cursor: pointer; padding: 3px; flex-shrink: 0; }
+  .cat-add-row input[type="text"] { flex: 1; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 8px; font-size: 12px; font-family: inherit; outline: none; }
+  .cat-add-row input[type="text"]:focus { border-color: var(--accent); }
+  .cat-add-btn { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+  .cat-add-btn:hover { opacity: .85; }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ══════════════════════════════════════════════════════════════
+     STATS TAB
+  ══════════════════════════════════════════════════════════════ */
+  .stats-panel { flex: 1; overflow-y: auto; padding: 24px; }
+  .stats-period-bar { display: flex; gap: 6px; margin-bottom: 24px; flex-wrap: wrap; }
+  .period-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text-muted); border-radius: 20px; padding: 5px 14px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s; font-family: inherit; }
+  .period-btn:hover { border-color: var(--accent); color: var(--text); }
+  .period-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .stat-card .sc-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); margin-bottom: 8px; }
+  .stat-card .sc-value { font-size: 26px; font-weight: 700; color: var(--text); line-height: 1; }
+  .stat-card .sc-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+  .stats-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  @media (max-width: 700px) { .stats-row { grid-template-columns: 1fr; } }
+
+  .stats-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .stats-card-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); margin-bottom: 14px; }
+
+  /* Bar chart */
+  .bar-chart-wrap { overflow-x: auto; }
+  .bar-chart { display: flex; align-items: flex-end; gap: 3px; height: 120px; }
+  .bar-col { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; min-width: 18px; max-width: 40px; cursor: pointer; }
+  .bar-col:hover .bar-stack { filter: brightness(1.2); }
+  .bar-stack { width: 100%; display: flex; flex-direction: column-reverse; border-radius: 3px 3px 0 0; overflow: hidden; min-height: 2px; }
+  .bar-seg { width: 100%; transition: height .3s ease; }
+  .bar-label { font-size: 9px; color: var(--text-muted); white-space: nowrap; }
+
+  /* Category table */
+  .cat-table { width: 100%; border-collapse: collapse; }
+  .cat-table tr { border-bottom: 1px solid var(--border); }
+  .cat-table tr:last-child { border-bottom: none; }
+  .cat-table td { padding: 6px 4px; font-size: 12px; vertical-align: middle; }
+  .cat-table td:last-child { text-align: right; font-weight: 600; color: var(--text); }
+  .ct-bar { height: 5px; border-radius: 2px; margin-top: 3px; transition: width .3s; }
+
+  /* ══════════════════════════════════════════════════════════════
+     EXPORT TAB
+  ══════════════════════════════════════════════════════════════ */
+  .export-panel { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; align-items: flex-start; gap: 20px; }
+  .export-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; width: 100%; max-width: 480px; }
+  .export-card-title { font-size: 14px; font-weight: 700; margin-bottom: 16px; }
+  .export-field { margin-bottom: 14px; }
+  .export-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin-bottom: 6px; display: block; }
+  .export-row { display: flex; align-items: center; gap: 10px; }
+  .export-row span { font-size: 12px; color: var(--text-muted); }
+  .date-picker-input { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: inherit; outline: none; cursor: pointer; }
+  .date-picker-input:focus { border-color: var(--accent); }
+  .quick-ranges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .qr-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text-muted); border-radius: 6px; padding: 4px 10px; font-size: 11px; cursor: pointer; font-family: inherit; font-weight: 500; transition: all .15s; }
+  .qr-btn:hover { border-color: var(--accent); color: var(--text); }
+  .export-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+  .export-btn { display: inline-flex; align-items: center; gap: 6px; background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 8px 18px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; transition: opacity .15s; }
+  .export-btn:hover { opacity: .85; }
+  .export-btn.secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .export-btn.secondary:hover { border-color: var(--accent); }
+  .export-status { font-size: 12px; color: #22c55e; margin-top: 8px; min-height: 18px; }
+</style>
+</head>
+<body>
+
+<!-- ── Tab bar ── -->
+<div class="tab-bar">
+  <span class="tab-bar-title">Timesheet</span>
+  <button class="tab-btn active" data-tab="timesheet">Daily Log</button>
+  <button class="tab-btn" data-tab="stats">Stats</button>
+  <button class="tab-btn" data-tab="export">Export</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     TIMESHEET TAB
+══════════════════════════════════════════════════════════════ -->
+<div class="tab-panel active" id="tab-timesheet">
+
+  <div class="ts-header">
+    <span style="font-weight:600;font-size:14px">Daily Log</span>
+    <div class="date-nav">
+      <button id="prevDay" title="Previous day">&#8249;</button>
+      <span id="dateLabel"></span>
+      <input type="date" id="dateInput">
+      <button id="nextDay" title="Next day">&#8250;</button>
+      <button class="today-btn" id="todayBtn">Today</button>
+    </div>
+  </div>
+
+  <div class="legend" id="legend"></div>
+
+  <div class="ts-scroll">
+    <div class="page-body">
+      <div class="left-col">
+        <table id="timesheetTable">
+          <thead>
+            <tr>
+              <th class="col-time">Time</th>
+              <th class="col-planned">Planned</th>
+              <th class="col-actual">Actual</th>
+            </tr>
+          </thead>
+          <tbody id="timesheetBody"></tbody>
+        </table>
+      </div>
+
+      <aside class="sidebar">
+        <div class="sidebar-card">
+          <div class="card-title">Today's Breakdown</div>
+          <svg id="donutChart" viewBox="0 0 160 160" width="160" height="160"></svg>
+          <div class="chart-legend" id="chartLegend"></div>
+        </div>
+        <div class="sidebar-card">
+          <div class="card-title">This Week</div>
+          <div class="week-grid" id="weekGrid"></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     STATS TAB
+══════════════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-stats">
+  <div class="stats-panel">
+    <div class="stats-period-bar" id="periodBar">
+      <button class="period-btn active" data-period="week">This Week</button>
+      <button class="period-btn" data-period="month">This Month</button>
+      <button class="period-btn" data-period="3m">3 Months</button>
+      <button class="period-btn" data-period="6m">6 Months</button>
+      <button class="period-btn" data-period="year">This Year</button>
+      <button class="period-btn" data-period="all">All Time</button>
+    </div>
+
+    <div class="stats-grid" id="statsKpi"></div>
+
+    <div class="stats-row">
+      <div class="stats-card">
+        <div class="stats-card-title">Hours per Day</div>
+        <div class="bar-chart-wrap">
+          <div class="bar-chart" id="barChart"></div>
+        </div>
+      </div>
+      <div class="stats-card">
+        <div class="stats-card-title">Category Breakdown (Actual)</div>
+        <div style="display:flex;gap:16px;align-items:center;">
+          <svg id="statsDonut" viewBox="0 0 120 120" width="110" height="110" style="flex-shrink:0"></svg>
+          <div style="flex:1;min-width:0">
+            <table class="cat-table" id="catBreakTable"></table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     EXPORT TAB
+══════════════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-export">
+  <div class="export-panel">
+    <div class="export-card">
+      <div class="export-card-title">Export Data</div>
+
+      <div class="export-field">
+        <label class="export-label">Quick Range</label>
+        <div class="quick-ranges" id="quickRanges">
+          <button class="qr-btn" data-qr="week">This week</button>
+          <button class="qr-btn" data-qr="month">This month</button>
+          <button class="qr-btn" data-qr="3m">Last 3 months</button>
+          <button class="qr-btn" data-qr="6m">Last 6 months</button>
+          <button class="qr-btn" data-qr="year">This year</button>
+          <button class="qr-btn" data-qr="all">All time</button>
+        </div>
+      </div>
+
+      <div class="export-field">
+        <label class="export-label">Custom Range</label>
+        <div class="export-row">
+          <input type="date" class="date-picker-input" id="exportFrom">
+          <span>to</span>
+          <input type="date" class="date-picker-input" id="exportTo">
+        </div>
+      </div>
+
+      <div class="export-btns">
+        <button class="export-btn" id="exportCsvBtn">Export CSV</button>
+        <button class="export-btn secondary" id="exportJsonBtn">Export JSON</button>
+      </div>
+      <div class="export-status" id="exportStatus"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Category picker -->
+<div class="cat-picker" id="catPicker">
+  <div class="cat-picker-title">Category</div>
+</div>
+
+<!-- Category manager modal -->
+<div class="cat-modal-overlay" id="catModalOverlay">
+  <div class="cat-modal">
+    <div class="cat-modal-header">
+      <span class="cat-modal-title">Manage Categories</span>
+      <button class="cat-modal-close" id="closeCatModal">✕</button>
+    </div>
+    <div id="catModalList"></div>
+    <div class="cat-add-row">
+      <input type="color" id="newCatColor" value="#3b82f6">
+      <input type="text" id="newCatName" placeholder="New category name" maxlength="32">
+      <button class="cat-add-btn" id="addCatBtn">Add</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Config ───────────────────────────────────────────────────────────────────
+const START_MIN = 4 * 60 + 30;
+const END_MIN   = 22 * 60 + 30;
+const STEP      = 15;
+
+function minutesToLabel(m) {
+  const h = Math.floor(m / 60), mm = m % 60;
+  const ampm = h < 12 ? 'AM' : 'PM';
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12}:${mm.toString().padStart(2,'0')} ${ampm}`;
+}
+function minutesToKey(m) {
+  return `${Math.floor(m/60).toString().padStart(2,'0')}:${(m%60).toString().padStart(2,'0')}`;
+}
+
+const SLOTS = [];
+for (let m = START_MIN; m < END_MIN; m += STEP) {
+  SLOTS.push({ key: minutesToKey(m), label: minutesToLabel(m), minutes: m });
+}
+const TOTAL_SLOTS = SLOTS.length;
+
+// ── State ────────────────────────────────────────────────────────────────────
+let currentDate = todayString();
+let pickerTarget = null;
+let activeFilter = null;
+let CATEGORIES = [];
+let CAT_MAP = {};
+
+function todayString() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function offsetDate(dateStr, days) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m - 1, d + days);
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+}
+
+// ── Storage (via IPC) ────────────────────────────────────────────────────────
+async function loadDay(date) {
+  return await window.ts.loadDay(date);
+}
+async function saveDay(date, data) {
+  await window.ts.saveDay(date, data);
+}
+async function getSlotAsync(date, slotKey, side) {
+  const data = await loadDay(date);
+  return (data[slotKey] && data[slotKey][side]) || { cat: 'none', text: '' };
+}
+async function setSlot(date, slotKey, side, field, value) {
+  const data = await loadDay(date);
+  if (!data[slotKey]) data[slotKey] = {};
+  if (!data[slotKey][side]) data[slotKey][side] = { cat: 'none', text: '' };
+  data[slotKey][side][field] = value;
+  await saveDay(date, data);
+  drawChart();
+  drawWeekly();
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+    if (btn.dataset.tab === 'stats') renderStats('week');
+  });
+});
+
+// ── Legend ───────────────────────────────────────────────────────────────────
+function buildLegend() {
+  const el = document.getElementById('legend');
+  el.innerHTML = '';
+  CATEGORIES.filter(c => c.id !== 'none').forEach(cat => {
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.dataset.cat = cat.id;
+    item.innerHTML = `<span class="dot" style="background:${cat.color}"></span>${cat.label}`;
+    item.addEventListener('click', () => toggleFilter(cat.id));
+    el.appendChild(item);
+  });
+  const btn = document.createElement('button');
+  btn.className = 'legend-manage-btn';
+  btn.textContent = '⚙ Edit categories';
+  btn.addEventListener('click', openCatModal);
+  el.appendChild(btn);
+}
+
+function toggleFilter(catId) {
+  activeFilter = activeFilter === catId ? null : catId;
+  document.querySelectorAll('.legend-item').forEach(el =>
+    el.classList.toggle('active-filter', el.dataset.cat === activeFilter));
+  applyFilter();
+}
+
+async function applyFilter() {
+  const data = await loadDay(currentDate);
+  document.querySelectorAll('#timesheetBody tr').forEach(row => {
+    const slotKey = row.dataset.slotKey;
+    if (!slotKey || !activeFilter) { row.classList.remove('filtered-out'); return; }
+    const p = (data[slotKey] && data[slotKey].planned) || { cat: 'none' };
+    const a = (data[slotKey] && data[slotKey].actual)  || { cat: 'none' };
+    row.classList.toggle('filtered-out', p.cat !== activeFilter && a.cat !== activeFilter);
+  });
+}
+
+// ── Donut chart ───────────────────────────────────────────────────────────────
+function getCatCountsFromData(data, side) {
+  const counts = {};
+  SLOTS.forEach(s => {
+    const slot = (data[s.key] && data[s.key][side]) || { cat: 'none' };
+    if (slot.cat && slot.cat !== 'none') counts[slot.cat] = (counts[slot.cat] || 0) + 1;
+  });
+  return counts;
+}
+
+async function drawChart() {
+  const data   = await loadDay(currentDate);
+  const svg    = document.getElementById('donutChart');
+  const legend = document.getElementById('chartLegend');
+  const counts = getCatCountsFromData(data, 'actual');
+  const total  = Object.values(counts).reduce((s, v) => s + v, 0);
+  drawDonut(svg, legend, counts, total, true);
+}
+
+function drawDonut(svgEl, legendEl, counts, total, showHrs) {
+  const cx = svgEl.viewBox.baseVal.width  / 2;
+  const cy = svgEl.viewBox.baseVal.height / 2;
+  const r  = cx - 26;
+  const sw = 20;
+  const circ = 2 * Math.PI * r;
+
+  if (total === 0) {
+    svgEl.innerHTML = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#1e2438" stroke-width="${sw}"/>
+      <text x="${cx}" y="${cy+4}" text-anchor="middle" fill="#8892a4" font-size="11" font-family="Segoe UI,sans-serif">No data</text>`;
+    if (legendEl) legendEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted);text-align:center">No data</div>';
+    return;
+  }
+
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  let paths = '', cumulative = 0;
+  sorted.forEach(([catId, count]) => {
+    const cat = CAT_MAP[catId];
+    if (!cat) return;
+    const proportion = count / total;
+    const dash = proportion * circ;
+    const gap  = circ - dash;
+    const dashOffset = circ / 4 - cumulative * circ;
+    paths += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${cat.color}" stroke-width="${sw}" stroke-dasharray="${dash.toFixed(3)} ${gap.toFixed(3)}" stroke-dashoffset="${dashOffset.toFixed(3)}"/>`;
+    cumulative += proportion;
+  });
+
+  const hours = (total * 0.25).toFixed(1);
+  const fs1   = cx > 50 ? 20 : 14;
+  const fs2   = cx > 50 ? 11 : 9;
+  svgEl.innerHTML = paths + `
+    <text x="${cx}" y="${cy - 4}" text-anchor="middle" fill="#e2e8f0" font-size="${fs1}" font-weight="700" font-family="Segoe UI,sans-serif">${hours}</text>
+    <text x="${cx}" y="${cy + fs2 + 2}" text-anchor="middle" fill="#8892a4" font-size="${fs2}" font-family="Segoe UI,sans-serif">hrs${showHrs?' actual':''}</text>
+  `;
+
+  if (legendEl) {
+    legendEl.innerHTML = '';
+    sorted.forEach(([catId, count]) => {
+      const cat = CAT_MAP[catId]; if (!cat) return;
+      const row = document.createElement('div');
+      row.className = 'chart-legend-row';
+      row.innerHTML = `<span class="dot" style="background:${cat.color}"></span><span class="cl-label">${cat.label}</span><span class="cl-val">${(count*0.25).toFixed(2)}h</span>`;
+      legendEl.appendChild(row);
+    });
+  }
+}
+
+// ── Weekly mini overview ──────────────────────────────────────────────────────
+async function drawWeekly() {
+  const grid  = document.getElementById('weekGrid');
+  grid.innerHTML = '';
+  const today = todayString();
+
+  for (let i = 6; i >= 0; i--) {
+    const dateStr = offsetDate(today, -i);
+    const [, , d] = dateStr.split('-').map(Number);
+    const dateObj = new Date(...dateStr.split('-').map(Number).map((v,i)=>i===1?v-1:v));
+    const dayAbbr = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+
+    const data   = await loadDay(dateStr);
+    const counts = getCatCountsFromData(data, 'actual');
+    const total  = Object.values(counts).reduce((s, v) => s + v, 0);
+
+    const row = document.createElement('div');
+    row.className = 'week-row';
+    if (dateStr === today)        row.classList.add('week-today');
+    if (dateStr === currentDate)  row.classList.add('week-selected');
+    row.addEventListener('click', () => { currentDate = dateStr; onDateChange(); });
+
+    const labelEl = document.createElement('div');
+    labelEl.className = 'week-label';
+    labelEl.innerHTML = `<span class="week-day">${dayAbbr}</span><span class="week-num">${d}</span>`;
+
+    const barWrap = document.createElement('div');
+    barWrap.className = 'week-bar-wrap';
+    if (total > 0) {
+      Object.entries(counts).sort((a,b)=>b[1]-a[1]).forEach(([catId, count]) => {
+        const cat = CAT_MAP[catId]; if (!cat) return;
+        const seg = document.createElement('div');
+        seg.className = 'week-seg';
+        seg.style.width = `${(count / TOTAL_SLOTS) * 100}%`;
+        seg.style.background = cat.color;
+        seg.title = `${cat.label}: ${(count * 0.25).toFixed(2)}h`;
+        barWrap.appendChild(seg);
+      });
+    }
+
+    const hoursEl = document.createElement('div');
+    hoursEl.className = 'week-hours';
+    hoursEl.textContent = total > 0 ? `${(total * 0.25).toFixed(1)}h` : '—';
+
+    row.appendChild(labelEl);
+    row.appendChild(barWrap);
+    row.appendChild(hoursEl);
+    grid.appendChild(row);
+  }
+}
+
+// ── Table ─────────────────────────────────────────────────────────────────────
+async function buildTable() {
+  const tbody = document.getElementById('timesheetBody');
+  tbody.innerHTML = '';
+  const data = await loadDay(currentDate);
+
+  SLOTS.forEach(slot => {
+    const tr = document.createElement('tr');
+    if (slot.minutes % 60 === 0) tr.classList.add('hour-start');
+    tr.dataset.slotKey = slot.key;
+
+    const tdTime = document.createElement('td');
+    tdTime.className = 'col-time';
+    tdTime.textContent = slot.label;
+    tr.appendChild(tdTime);
+
+    ['planned', 'actual'].forEach(side => {
+      const td     = document.createElement('td');
+      td.className = `col-${side}`;
+      const saved  = (data[slot.key] && data[slot.key][side]) || { cat: 'none', text: '' };
+
+      const slotDiv  = document.createElement('div');
+      slotDiv.className = 'slot';
+
+      const catBtn = document.createElement('button');
+      catBtn.className = 'cat-btn';
+      const cat = CAT_MAP[saved.cat] || CAT_MAP['none'];
+      catBtn.style.background = cat.color;
+      catBtn.title = cat.label;
+      catBtn.addEventListener('click', e => openPicker(e, slot.key, side, catBtn));
+
+      const textInput = document.createElement('input');
+      textInput.type  = 'text';
+      textInput.className = 'slot-text';
+      textInput.value = saved.text || '';
+      textInput.placeholder = side === 'planned' ? 'Plan…' : 'Actual…';
+      textInput.addEventListener('input', () => {
+        setSlot(currentDate, slot.key, side, 'text', textInput.value);
+        if (activeFilter) applyFilter();
+      });
+      textInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === 'ArrowDown') { e.preventDefault(); navigateSlot(slot.key, side, 1); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); navigateSlot(slot.key, side, -1); }
+      });
+
+      slotDiv.appendChild(catBtn);
+      slotDiv.appendChild(textInput);
+      td.appendChild(slotDiv);
+      tr.appendChild(td);
+    });
+
+    tbody.appendChild(tr);
+  });
+}
+
+function navigateSlot(slotKey, side, dir) {
+  const idx = SLOTS.findIndex(s => s.key === slotKey) + dir;
+  if (idx < 0 || idx >= SLOTS.length) return;
+  const nextRow = document.querySelector(`tr[data-slot-key="${SLOTS[idx].key}"]`);
+  if (nextRow) { const inp = nextRow.querySelector(`.col-${side} .slot-text`); if (inp) { inp.focus(); inp.select(); } }
+}
+
+// ── Category Picker ───────────────────────────────────────────────────────────
+function buildPicker() {
+  const picker = document.getElementById('catPicker');
+  picker.querySelectorAll('.cat-opt').forEach(el => el.remove());
+  CATEGORIES.forEach(cat => {
+    const opt = document.createElement('div');
+    opt.className = 'cat-opt';
+    opt.dataset.catId = cat.id;
+    opt.innerHTML = `<span class="dot" style="background:${cat.color}"></span>${cat.label}`;
+    opt.addEventListener('click', () => selectCategory(cat.id));
+    picker.appendChild(opt);
+  });
+}
+
+let pickerOpenScrollY = null;
+function openPicker(e, slotKey, side, btnEl) {
+  e.stopPropagation();
+  const picker = document.getElementById('catPicker');
+  loadDay(currentDate).then(data => {
+    const current = (data[slotKey] && data[slotKey][side] && data[slotKey][side].cat) || 'none';
+    picker.querySelectorAll('.cat-opt').forEach(opt =>
+      opt.classList.toggle('selected', opt.dataset.catId === current));
+  });
+  pickerTarget = { slotKey, side, btnEl };
+  const rect = btnEl.getBoundingClientRect();
+  picker.style.top  = (rect.bottom + 6) + 'px';
+  picker.style.left = rect.left + 'px';
+  picker.classList.add('open');
+  pickerOpenScrollY = window.scrollY;
+  const pr = picker.getBoundingClientRect();
+  if (pr.right > window.innerWidth - 10) picker.style.left = (window.innerWidth - pr.width - 10) + 'px';
+  if (pr.bottom > window.innerHeight - 10) picker.style.top = (rect.top - pr.height - 6) + 'px';
+}
+
+function selectCategory(catId) {
+  if (!pickerTarget) return;
+  const { slotKey, side, btnEl } = pickerTarget;
+  setSlot(currentDate, slotKey, side, 'cat', catId);
+  btnEl.style.background = CAT_MAP[catId].color;
+  btnEl.title = CAT_MAP[catId].label;
+  closePicker();
+  if (activeFilter) applyFilter();
+}
+
+function closePicker() {
+  document.getElementById('catPicker').classList.remove('open');
+  pickerTarget = null;
+  pickerOpenScrollY = null;
+}
+
+document.addEventListener('click', e => {
+  if (!document.getElementById('catPicker').contains(e.target)) closePicker();
+});
+document.querySelector('.ts-scroll').addEventListener('scroll', () => {
+  if (!document.getElementById('catPicker').classList.contains('open')) return;
+  closePicker();
+}, { passive: true });
+
+// ── Date Navigation ───────────────────────────────────────────────────────────
+function formatDateLabel(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const diff = Math.round((date - today) / 86400000);
+  const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
+  const dateFormatted = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const badge = diff === 0 ? ' (Today)' : diff === -1 ? ' (Yesterday)' : diff === 1 ? ' (Tomorrow)' : '';
+  return `${dayName}, ${dateFormatted}${badge}`;
+}
+
+function shiftDate(days) { currentDate = offsetDate(currentDate, days); onDateChange(); }
+
+function onDateChange() {
+  document.getElementById('dateLabel').textContent = formatDateLabel(currentDate);
+  document.getElementById('dateInput').value = currentDate;
+  document.title = `Timesheet — ${formatDateLabel(currentDate)}`;
+  activeFilter = null;
+  document.querySelectorAll('.legend-item').forEach(el => el.classList.remove('active-filter'));
+  buildTable();
+  drawChart();
+  drawWeekly();
+}
+
+document.getElementById('prevDay').addEventListener('click', () => shiftDate(-1));
+document.getElementById('nextDay').addEventListener('click', () => shiftDate(1));
+document.getElementById('todayBtn').addEventListener('click', () => { currentDate = todayString(); onDateChange(); });
+document.getElementById('dateLabel').addEventListener('click', () => {
+  const input = document.getElementById('dateInput');
+  input.style.display = input.style.display === 'none' ? 'inline-block' : 'none';
+  if (input.style.display !== 'none') { input.focus(); input.showPicker && input.showPicker(); }
+});
+document.getElementById('dateInput').addEventListener('change', e => {
+  if (e.target.value) { currentDate = e.target.value; e.target.style.display = 'none'; onDateChange(); }
+});
+
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+    if (e.key === 'ArrowLeft')  { e.preventDefault(); shiftDate(-1); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); shiftDate(1); }
+  }
+  if (e.key === 'Escape') closePicker();
+});
+
+// ── Category manager modal ────────────────────────────────────────────────────
+function openCatModal() { renderCatModalList(); document.getElementById('catModalOverlay').classList.add('open'); document.getElementById('newCatName').value = ''; }
+function closeCatModal() { document.getElementById('catModalOverlay').classList.remove('open'); }
+
+function renderCatModalList() {
+  const list = document.getElementById('catModalList');
+  list.innerHTML = '';
+  CATEGORIES.forEach(cat => {
+    const item = document.createElement('div');
+    item.className = 'cat-list-item';
+    const isProtected = cat.id === 'none';
+    item.innerHTML = `<span class="cat-list-swatch" style="background:${cat.color}"></span><span class="cat-list-name">${cat.label}</span><button class="cat-delete-btn" title="Delete" ${isProtected?'disabled':''}>✕</button>`;
+    if (!isProtected) item.querySelector('.cat-delete-btn').addEventListener('click', () => deleteCategory(cat.id));
+    list.appendChild(item);
+  });
+}
+
+async function deleteCategory(id) {
+  CATEGORIES = CATEGORIES.filter(c => c.id !== id);
+  CAT_MAP = Object.fromEntries(CATEGORIES.map(c => [c.id, c]));
+  await window.ts.saveCategories(CATEGORIES);
+  renderCatModalList(); buildLegend(); buildPicker(); drawChart();
+}
+
+async function addCategory(label, color) {
+  label = label.trim(); if (!label) return;
+  const id = label.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'') + '_' + Date.now();
+  const otherIdx = CATEGORIES.findIndex(c => c.id === 'other');
+  const newCat = { id, label, color };
+  if (otherIdx >= 0) CATEGORIES.splice(otherIdx, 0, newCat);
+  else CATEGORIES.push(newCat);
+  CAT_MAP = Object.fromEntries(CATEGORIES.map(c => [c.id, c]));
+  await window.ts.saveCategories(CATEGORIES);
+  renderCatModalList(); buildLegend(); buildPicker();
+}
+
+document.getElementById('closeCatModal').addEventListener('click', closeCatModal);
+document.getElementById('catModalOverlay').addEventListener('click', e => { if (e.target === document.getElementById('catModalOverlay')) closeCatModal(); });
+document.getElementById('addCatBtn').addEventListener('click', () => {
+  const name = document.getElementById('newCatName').value;
+  const color = document.getElementById('newCatColor').value;
+  if (name.trim()) { addCategory(name, color); document.getElementById('newCatName').value = ''; }
+});
+document.getElementById('newCatName').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('addCatBtn').click(); });
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.period-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderStats(btn.dataset.period);
+  });
+});
+
+function periodDates(period) {
+  const today = todayString();
+  switch(period) {
+    case 'week': {
+      const [y,m,d] = today.split('-').map(Number);
+      const dt = new Date(y, m-1, d);
+      const dow = dt.getDay(); // 0=Sun
+      const monday = offsetDate(today, -(dow === 0 ? 6 : dow - 1));
+      return { from: monday, to: today };
+    }
+    case 'month': return { from: today.slice(0,8) + '01', to: today };
+    case '3m':    return { from: offsetDate(today, -90), to: today };
+    case '6m':    return { from: offsetDate(today, -180), to: today };
+    case 'year':  return { from: today.slice(0,5) + '01-01', to: today };
+    case 'all':   return { from: '2000-01-01', to: today };
+    default:      return { from: today, to: today };
+  }
+}
+
+async function renderStats(period) {
+  const { from, to } = periodDates(period);
+  const allData = await window.ts.getAllData();
+
+  // Collect dates in range
+  const dates = [];
+  let d = from;
+  while (d <= to) { dates.push(d); d = offsetDate(d, 1); }
+
+  // Per-day hours & category counts
+  let totalSlots = 0, totalDays = 0, maxDay = 0;
+  const catCounts  = {};
+  const dailyTotals = {};
+
+  dates.forEach(date => {
+    const data = allData[date] || {};
+    const daySlots = SLOTS.reduce((sum, s) => {
+      const a = (data[s.key] && data[s.key].actual) || { cat: 'none' };
+      if (a.cat !== 'none') {
+        catCounts[a.cat] = (catCounts[a.cat] || 0) + 1;
+        return sum + 1;
+      }
+      return sum;
+    }, 0);
+    if (daySlots > 0) {
+      totalDays++;
+      totalSlots += daySlots;
+      maxDay = Math.max(maxDay, daySlots);
+    }
+    dailyTotals[date] = daySlots;
+  });
+
+  const totalHours = totalSlots * 0.25;
+  const avgHours   = totalDays > 0 ? totalHours / totalDays : 0;
+  const topCatId   = Object.entries(catCounts).sort((a,b)=>b[1]-a[1])[0];
+  const topCat     = topCatId ? CAT_MAP[topCatId[0]] : null;
+
+  // KPI cards
+  document.getElementById('statsKpi').innerHTML = `
+    <div class="stat-card"><div class="sc-label">Total Hours</div><div class="sc-value">${totalHours.toFixed(1)}</div><div class="sc-sub">${totalDays} active day${totalDays!==1?'s':''}</div></div>
+    <div class="stat-card"><div class="sc-label">Avg / Day</div><div class="sc-value">${avgHours.toFixed(1)}h</div><div class="sc-sub">on active days</div></div>
+    <div class="stat-card"><div class="sc-label">Best Day</div><div class="sc-value">${(maxDay*0.25).toFixed(1)}h</div><div class="sc-sub">&nbsp;</div></div>
+    <div class="stat-card"><div class="sc-label">Top Category</div><div class="sc-value" style="font-size:16px">${topCat ? topCat.label : '—'}</div><div class="sc-sub">${topCatId ? (topCatId[1]*0.25).toFixed(1)+'h' : ''}</div></div>
+  `;
+
+  // Bar chart
+  const barChart = document.getElementById('barChart');
+  barChart.innerHTML = '';
+  // Show last N days intelligently
+  const BAR_MAX = 60;
+  const showDates = dates.length > BAR_MAX ? dates.slice(-BAR_MAX) : dates;
+  const barMax = Math.max(...showDates.map(d => dailyTotals[d] || 0), 1);
+
+  showDates.forEach(date => {
+    const slots = dailyTotals[date] || 0;
+    const data  = allData[date] || {};
+    const [, , dd] = date.split('-').map(Number);
+    const dateObj = new Date(...date.split('-').map((v,i)=>i===1?Number(v)-1:Number(v)));
+    const dow = dateObj.toLocaleDateString('en-US',{weekday:'short'});
+
+    const col = document.createElement('div');
+    col.className = 'bar-col';
+    col.title = `${date}: ${(slots*0.25).toFixed(1)}h`;
+
+    const stack = document.createElement('div');
+    stack.className = 'bar-stack';
+    const heightPct = (slots / barMax) * 100;
+    stack.style.height = `${heightPct}%`;
+
+    if (slots > 0) {
+      const counts = {};
+      SLOTS.forEach(s => {
+        const a = (data[s.key] && data[s.key].actual) || { cat: 'none' };
+        if (a.cat !== 'none') counts[a.cat] = (counts[a.cat] || 0) + 1;
+      });
+      Object.entries(counts).sort((a,b)=>b[1]-a[1]).forEach(([catId, count]) => {
+        const cat = CAT_MAP[catId]; if (!cat) return;
+        const seg = document.createElement('div');
+        seg.className = 'bar-seg';
+        seg.style.height  = `${(count / slots) * 100}%`;
+        seg.style.background = cat.color;
+        stack.appendChild(seg);
+      });
+    }
+
+    const label = document.createElement('div');
+    label.className = 'bar-label';
+    // Show Mon label only on Mondays, or day number if enough space
+    if (showDates.length <= 14) label.textContent = `${dow.slice(0,2)}\n${dd}`;
+    else if (dow === 'Mon') label.textContent = `${dd}`;
+    else label.textContent = '';
+
+    col.appendChild(stack);
+    col.appendChild(label);
+    col.addEventListener('click', () => { currentDate = date; onDateChange(); document.querySelector('.tab-btn[data-tab="timesheet"]').click(); });
+    barChart.appendChild(col);
+  });
+
+  // Stats donut
+  const statsDonut = document.getElementById('statsDonut');
+  const catTotal = Object.values(catCounts).reduce((s, v) => s + v, 0);
+  drawDonut(statsDonut, null, catCounts, catTotal, false);
+
+  // Category table
+  const catTable = document.getElementById('catBreakTable');
+  catTable.innerHTML = '';
+  const sorted = Object.entries(catCounts).sort((a,b)=>b[1]-a[1]);
+  sorted.forEach(([catId, count]) => {
+    const cat = CAT_MAP[catId]; if (!cat) return;
+    const pct = catTotal > 0 ? Math.round(count / catTotal * 100) : 0;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="dot" style="background:${cat.color};margin-right:5px;display:inline-block"></span>${cat.label}</td>
+      <td>${(count*0.25).toFixed(1)}h <span style="color:var(--text-muted);font-weight:400">(${pct}%)</span></td>
+    `;
+    catTable.appendChild(tr);
+  });
+  if (sorted.length === 0) catTable.innerHTML = '<tr><td colspan="2" style="color:var(--text-muted);text-align:center;padding:12px">No data</td></tr>';
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+function setExportRange(from, to) {
+  document.getElementById('exportFrom').value = from;
+  document.getElementById('exportTo').value   = to;
+}
+
+document.querySelectorAll('.qr-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const { from, to } = periodDates(btn.dataset.qr);
+    setExportRange(from, to);
+  });
+});
+
+async function doExport(type) {
+  const from = document.getElementById('exportFrom').value;
+  const to   = document.getElementById('exportTo').value;
+  if (!from || !to) { showExportStatus('Please select a date range.', true); return; }
+  if (from > to) { showExportStatus('Start date must be before end date.', true); return; }
+
+  const fn   = type === 'csv' ? window.ts.exportData : window.ts.exportJson;
+  const result = await fn(from, to);
+  if (result.cancelled) return;
+  showExportStatus(`Saved: ${result.filePath}`);
+}
+
+function showExportStatus(msg, isErr) {
+  const el = document.getElementById('exportStatus');
+  el.textContent = msg;
+  el.style.color = isErr ? '#ef4444' : '#22c55e';
+  setTimeout(() => { el.textContent = ''; }, 5000);
+}
+
+document.getElementById('exportCsvBtn').addEventListener('click',  () => doExport('csv'));
+document.getElementById('exportJsonBtn').addEventListener('click', () => doExport('json'));
+
+// Initialize export date range to this week
+const { from: ewFrom, to: ewTo } = periodDates('week');
+setExportRange(ewFrom, ewTo);
+
+// Refresh when a reminder is submitted
+window.ts.onRefreshDay(() => { buildTable(); drawChart(); drawWeekly(); });
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+  CATEGORIES = await window.ts.loadCategories();
+  CAT_MAP    = Object.fromEntries(CATEGORIES.map(c => [c.id, c]));
+  buildLegend();
+  buildPicker();
+  onDateChange();
+}
+init();
+</script>
+</body>
+</html>

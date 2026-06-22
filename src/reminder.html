@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Timesheet Reminder</title>
+<style>
+  :root {
+    --bg: #1a1d27;
+    --surface: #22263a;
+    --border: #2e3350;
+    --text: #e2e8f0;
+    --text-muted: #8892a4;
+    --accent: #4f8ef7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    user-select: none;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px 8px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    -webkit-app-region: drag;
+  }
+  .header-left { display: flex; align-items: center; gap: 8px; }
+  .pulse {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 1.5s infinite;
+    flex-shrink: 0;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: .5; transform: scale(.8); }
+  }
+  .header-title { font-size: 12px; font-weight: 700; color: var(--text); }
+  .header-time  { font-size: 11px; color: var(--accent); font-weight: 600; }
+  .close-btn {
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 14px; padding: 2px 5px; border-radius: 4px; line-height: 1;
+    -webkit-app-region: no-drag;
+  }
+  .close-btn:hover { background: rgba(239,68,68,.2); color: #ef4444; }
+
+  .body { padding: 12px 14px; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+
+  .planned-row {
+    display: flex; align-items: flex-start; gap: 8px;
+    background: rgba(255,255,255,.04); border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 10px; font-size: 11px;
+  }
+  .planned-label { color: var(--text-muted); white-space: nowrap; padding-top: 1px; }
+  .planned-text  { color: var(--text); flex: 1; }
+
+  .input-row { display: flex; align-items: center; gap: 8px; }
+  .cat-btn {
+    width: 14px; height: 14px; border-radius: 50%; border: none;
+    cursor: pointer; flex-shrink: 0; transition: transform .1s;
+  }
+  .cat-btn:hover { transform: scale(1.25); }
+
+  .actual-input {
+    flex: 1; background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 6px 10px;
+    font-size: 13px; font-family: inherit; outline: none;
+  }
+  .actual-input:focus { border-color: var(--accent); }
+  .actual-input::placeholder { color: var(--text-muted); opacity: .6; }
+
+  .footer { display: flex; gap: 8px; justify-content: flex-end; padding: 0 14px 12px; }
+  .skip-btn {
+    background: none; border: 1px solid var(--border); color: var(--text-muted);
+    border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; font-family: inherit;
+  }
+  .skip-btn:hover { border-color: var(--accent); color: var(--text); }
+  .save-btn {
+    background: var(--accent); color: #fff; border: none;
+    border-radius: 6px; padding: 5px 16px; font-size: 12px; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+  }
+  .save-btn:hover { opacity: .85; }
+
+  /* category picker */
+  .cat-picker {
+    position: fixed; z-index: 999; background: #22263a;
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px; display: none; flex-direction: column; gap: 3px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.5); min-width: 140px;
+  }
+  .cat-picker.open { display: flex; }
+  .cat-opt {
+    display: flex; align-items: center; gap: 7px; padding: 4px 7px;
+    border-radius: 5px; cursor: pointer; font-size: 12px; color: var(--text);
+    transition: background .1s; border: 1px solid transparent;
+  }
+  .cat-opt:hover { background: var(--border); }
+  .cat-opt.selected { border-color: rgba(255,255,255,.15); background: rgba(255,255,255,.06); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+  /* countdown bar */
+  .countdown-bar {
+    height: 2px; background: var(--border); flex-shrink: 0;
+  }
+  .countdown-fill {
+    height: 100%; background: var(--accent); transition: width 1s linear;
+  }
+</style>
+</head>
+<body>
+
+<div class="countdown-bar"><div class="countdown-fill" id="countdown" style="width:100%"></div></div>
+
+<div class="header">
+  <div class="header-left">
+    <div class="pulse"></div>
+    <span class="header-title">What did you do?</span>
+    <span class="header-time" id="slotTimeLabel"></span>
+  </div>
+  <button class="close-btn" id="dismissBtn">✕</button>
+</div>
+
+<div class="body">
+  <div class="planned-row" id="plannedRow" style="display:none">
+    <span class="planned-label">Planned:</span>
+    <span class="planned-text" id="plannedText"></span>
+  </div>
+
+  <div class="input-row">
+    <button class="cat-btn" id="catBtn" style="background:#2e3350" title="Set category"></button>
+    <input class="actual-input" id="actualInput" type="text" placeholder="Describe what you did…" autocomplete="off" autofocus>
+  </div>
+</div>
+
+<div class="footer">
+  <button class="skip-btn" id="skipBtn">Skip</button>
+  <button class="save-btn" id="saveBtn">Save</button>
+</div>
+
+<div class="cat-picker" id="catPicker"></div>
+
+<script>
+let slotKey      = null;
+let selectedCat  = 'none';
+let CATEGORIES   = [];
+let CAT_MAP      = {};
+let countdown    = 120;
+let countdownInt = null;
+
+// Receive data from main
+window.ts.onReminderData(async ({ slotKey: sk, slotLabel, plannedData }) => {
+  slotKey = sk;
+  document.getElementById('slotTimeLabel').textContent = slotLabel;
+
+  CATEGORIES = await window.ts.loadCategories();
+  CAT_MAP    = Object.fromEntries(CATEGORIES.map(c => [c.id, c]));
+  buildPicker();
+
+  if (plannedData) {
+    document.getElementById('plannedRow').style.display = 'flex';
+    const pCat = CAT_MAP[plannedData.cat];
+    document.getElementById('plannedText').textContent =
+      (pCat && pCat.id !== 'none' ? `[${pCat.label}] ` : '') + (plannedData.text || '');
+    // Pre-select planned category
+    if (plannedData.cat && plannedData.cat !== 'none') setCategory(plannedData.cat);
+    if (plannedData.text) document.getElementById('actualInput').value = plannedData.text;
+  }
+
+  // Select all text so user can just start typing
+  const inp = document.getElementById('actualInput');
+  inp.focus(); inp.select();
+
+  startCountdown();
+});
+
+function startCountdown() {
+  const fill = document.getElementById('countdown');
+  countdownInt = setInterval(() => {
+    countdown--;
+    fill.style.width = `${(countdown / 120) * 100}%`;
+    if (countdown <= 0) dismiss();
+  }, 1000);
+}
+
+function setCategory(id) {
+  selectedCat = id;
+  const cat = CAT_MAP[id];
+  if (cat) {
+    document.getElementById('catBtn').style.background = cat.color;
+    document.getElementById('catBtn').title = cat.label;
+  }
+  document.querySelectorAll('.cat-opt').forEach(o =>
+    o.classList.toggle('selected', o.dataset.catId === id));
+}
+
+function buildPicker() {
+  const picker = document.getElementById('catPicker');
+  picker.innerHTML = '';
+  CATEGORIES.forEach(cat => {
+    const opt = document.createElement('div');
+    opt.className = 'cat-opt';
+    opt.dataset.catId = cat.id;
+    opt.innerHTML = `<span class="dot" style="background:${cat.color}"></span>${cat.label}`;
+    opt.addEventListener('click', () => { setCategory(cat.id); closePicker(); });
+    picker.appendChild(opt);
+  });
+}
+
+document.getElementById('catBtn').addEventListener('click', e => {
+  e.stopPropagation();
+  const picker = document.getElementById('catPicker');
+  const rect   = e.currentTarget.getBoundingClientRect();
+  picker.style.top  = (rect.bottom + 4) + 'px';
+  picker.style.left = rect.left + 'px';
+  picker.classList.toggle('open');
+});
+document.addEventListener('click', () => closePicker());
+function closePicker() { document.getElementById('catPicker').classList.remove('open'); }
+
+async function save() {
+  clearInterval(countdownInt);
+  const text = document.getElementById('actualInput').value.trim();
+  await window.ts.submitReminder(slotKey, selectedCat, text);
+}
+
+function dismiss() {
+  clearInterval(countdownInt);
+  window.ts.dismissReminder();
+}
+
+document.getElementById('saveBtn').addEventListener('click', save);
+document.getElementById('skipBtn').addEventListener('click', dismiss);
+document.getElementById('dismissBtn').addEventListener('click', dismiss);
+document.getElementById('actualInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') save();
+  if (e.key === 'Escape') dismiss();
+});
+</script>
+</body>
+</html>

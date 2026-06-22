@@ -1,0 +1,17 @@
+{
+  "name": "timesheet",
+  "version": "1.0.0",
+  "description": "Daily Timesheet",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "postinstall": "electron-rebuild -f -w better-sqlite3"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.1",
+    "electron": "^42.4.1"
+  }
+}
