@@ -231,6 +231,10 @@ function setupAutoUpdate() {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
+  autoUpdater.on('update-not-available', () => {
+    if (mainWin) mainWin.webContents.send('updateStatus', "You're up to date");
+  });
+
   autoUpdater.on('update-downloaded', () => {
     dialog.showMessageBox(mainWin, {
       type: 'info',
@@ -245,6 +249,8 @@ function setupAutoUpdate() {
 
   autoUpdater.checkForUpdates().catch(() => {});
 }
+
+ipcMain.handle('checkForUpdates', () => autoUpdater.checkForUpdates().catch(() => {}));
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 

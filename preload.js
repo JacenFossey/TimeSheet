@@ -15,4 +15,6 @@ contextBridge.exposeInMainWorld('ts', {
 
   onReminderData:   (cb)           => ipcRenderer.on('reminderData', (_, d) => cb(d)),
   onRefreshDay:     (cb)           => ipcRenderer.on('refreshDay', () => cb()),
+  checkForUpdates:  ()             => ipcRenderer.invoke('checkForUpdates'),
+  onUpdateStatus:   (cb)           => ipcRenderer.on('updateStatus', (_, msg) => cb(msg)),
 });

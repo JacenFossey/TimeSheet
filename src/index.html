@@ -262,6 +262,10 @@
   <button class="tab-btn active" data-tab="timesheet">Daily Log</button>
   <button class="tab-btn" data-tab="stats">Stats</button>
   <button class="tab-btn" data-tab="export">Export</button>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+    <span id="updateStatusText" style="font-size:11px;color:var(--text-muted)"></span>
+    <button id="checkUpdateBtn" class="legend-manage-btn">Check for updates</button>
+  </div>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════
@@ -1041,6 +1045,23 @@ setExportRange(ewFrom, ewTo);
 
 // Refresh when a reminder is submitted
 window.ts.onRefreshDay(() => { dayCache = null; buildTable(); drawChart(); drawWeekly(); });
+
+// Check for updates
+document.getElementById('checkUpdateBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('checkUpdateBtn');
+  const status = document.getElementById('updateStatusText');
+  btn.disabled = true;
+  status.textContent = 'Checking…';
+  await window.ts.checkForUpdates();
+  setTimeout(() => { btn.disabled = false; }, 5000);
+});
+window.ts.onUpdateStatus(msg => {
+  const status = document.getElementById('updateStatusText');
+  const btn = document.getElementById('checkUpdateBtn');
+  status.textContent = msg;
+  btn.disabled = false;
+  setTimeout(() => { status.textContent = ''; }, 4000);
+});
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {
