@@ -30,7 +30,8 @@
     "publish": {
       "provider": "github",
       "owner": "JacenFossey",
-      "repo": "TimeSheet"
+      "repo": "TimeSheet",
+      "draft": false
     },
     "win": {
       "target": "nsis",
