@@ -31,7 +31,7 @@
       "provider": "github",
       "owner": "JacenFossey",
       "repo": "TimeSheet",
-      "draft": false
+      "releaseType": "release"
     },
     "win": {
       "target": "nsis",
