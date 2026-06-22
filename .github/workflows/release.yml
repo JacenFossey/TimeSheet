@@ -29,7 +29,7 @@ jobs:
         run: npm ci
 
       - name: Build installer
-        run: npm run dist
+        run: npm run dist -- --publish never
 
       - name: Create GitHub Release
         env:
