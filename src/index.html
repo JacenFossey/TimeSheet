@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Daily Timesheet</title>
+<script>
+  const _t = localStorage.getItem('theme');
+  if (_t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+</script>
 <style>
   :root {
     --bg: #0f1117;
@@ -14,6 +18,16 @@
     --text-muted: #8892a4;
     --accent: #4f8ef7;
     --hour-line: #2a2f4a;
+  }
+  [data-theme="light"] {
+    --bg: #f5f7fa;
+    --surface: #ffffff;
+    --surface2: #eef0f6;
+    --border: #d0d5e8;
+    --text: #1e2130;
+    --text-muted: #6b7280;
+    --accent: #3b7ef8;
+    --hour-line: #e8ebf4;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
@@ -265,6 +279,7 @@
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="updateStatusText" style="font-size:11px;color:var(--text-muted)"></span>
     <button id="checkUpdateBtn" class="legend-manage-btn">Check for updates</button>
+    <button id="themeBtn" class="legend-manage-btn" title="Toggle light/dark mode">☀</button>
   </div>
 </div>
 
@@ -547,8 +562,8 @@ function drawDonut(svgEl, legendEl, counts, total, showHrs) {
   const circ = 2 * Math.PI * r;
 
   if (total === 0) {
-    svgEl.innerHTML = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#1e2438" stroke-width="${sw}"/>
-      <text x="${cx}" y="${cy+4}" text-anchor="middle" fill="#8892a4" font-size="11" font-family="Segoe UI,sans-serif">No data</text>`;
+    svgEl.innerHTML = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--surface2)" stroke-width="${sw}"/>
+      <text x="${cx}" y="${cy+4}" text-anchor="middle" fill="var(--text-muted)" font-size="11" font-family="Segoe UI,sans-serif">No data</text>`;
     if (legendEl) legendEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted);text-align:center">No data</div>';
     return;
   }
@@ -570,8 +585,8 @@ function drawDonut(svgEl, legendEl, counts, total, showHrs) {
   const fs1   = cx > 50 ? 20 : 14;
   const fs2   = cx > 50 ? 11 : 9;
   svgEl.innerHTML = paths + `
-    <text x="${cx}" y="${cy - 4}" text-anchor="middle" fill="#e2e8f0" font-size="${fs1}" font-weight="700" font-family="Segoe UI,sans-serif">${hours}</text>
-    <text x="${cx}" y="${cy + fs2 + 2}" text-anchor="middle" fill="#8892a4" font-size="${fs2}" font-family="Segoe UI,sans-serif">hrs${showHrs?' actual':''}</text>
+    <text x="${cx}" y="${cy - 4}" text-anchor="middle" fill="var(--text)" font-size="${fs1}" font-weight="700" font-family="Segoe UI,sans-serif">${hours}</text>
+    <text x="${cx}" y="${cy + fs2 + 2}" text-anchor="middle" fill="var(--text-muted)" font-size="${fs2}" font-family="Segoe UI,sans-serif">hrs${showHrs?' actual':''}</text>
   `;
 
   if (legendEl) {
@@ -1061,6 +1076,17 @@ window.ts.onUpdateStatus(msg => {
   status.textContent = msg;
   btn.disabled = false;
   setTimeout(() => { status.textContent = ''; }, 4000);
+});
+
+// ── Theme toggle ─────────────────────────────────────────────────────────────
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  document.getElementById('themeBtn').textContent = theme === 'light' ? '☽' : '☀';
+  localStorage.setItem('theme', theme);
+}
+applyTheme(localStorage.getItem('theme') || 'dark');
+document.getElementById('themeBtn').addEventListener('click', () => {
+  applyTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light');
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
