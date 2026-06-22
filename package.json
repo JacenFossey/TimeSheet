@@ -9,6 +9,7 @@
     "dist": "electron-builder"
   },
   "dependencies": {
+    "electron-updater": "^6.3.9",
     "node-sqlite3-wasm": "^0.8.31"
   },
   "devDependencies": {
@@ -26,6 +27,11 @@
       "node_modules/**/*",
       "!node_modules/.cache"
     ],
+    "publish": {
+      "provider": "github",
+      "owner": "JacenFossey",
+      "repo": "TimeSheet"
+    },
     "win": {
       "target": "nsis",
       "signAndEditExecutable": false

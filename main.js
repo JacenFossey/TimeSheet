@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, dialog, screen } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs   = require('fs');
 
@@ -224,6 +225,27 @@ function scheduleReminders() {
   setTimeout(() => { fireReminder(); setInterval(fireReminder, 15 * 60 * 1000); }, msUntilNextQuarter());
 }
 
+// ── Auto-update ───────────────────────────────────────────────────────────────
+
+function setupAutoUpdate() {
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-downloaded', () => {
+    dialog.showMessageBox(mainWin, {
+      type: 'info',
+      title: 'Update Ready',
+      message: 'A new version of Timesheet has been downloaded. Restart now to install it?',
+      buttons: ['Restart', 'Later'],
+      defaultId: 0,
+    }).then(({ response }) => {
+      if (response === 0) autoUpdater.quitAndInstall();
+    });
+  });
+
+  autoUpdater.checkForUpdates().catch(() => {});
+}
+
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 
 const gotLock = app.requestSingleInstanceLock();
@@ -241,6 +263,7 @@ if (!gotLock) {
     migrateFromSqlite();
     createMain();
     scheduleReminders();
+    setupAutoUpdate();
     app.on('activate', () => { if (!mainWin) createMain(); });
   });
 
