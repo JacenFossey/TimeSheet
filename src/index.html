@@ -434,6 +434,7 @@ let pickerTarget = null;
 let activeFilter = null;
 let CATEGORIES = [];
 let CAT_MAP = {};
+let dayCache = null; // cache for currentDate; null = invalid
 
 function todayString() {
   const d = new Date();
@@ -447,14 +448,14 @@ function offsetDate(dateStr, days) {
 
 // ── Storage (via IPC) ────────────────────────────────────────────────────────
 async function loadDay(date) {
-  return await window.ts.loadDay(date);
+  if (date === currentDate && dayCache !== null) return dayCache;
+  const data = await window.ts.loadDay(date);
+  if (date === currentDate) dayCache = data;
+  return data;
 }
 async function saveDay(date, data) {
+  if (date === currentDate) dayCache = data;
   await window.ts.saveDay(date, data);
-}
-async function getSlotAsync(date, slotKey, side) {
-  const data = await loadDay(date);
-  return (data[slotKey] && data[slotKey][side]) || { cat: 'none', text: '' };
 }
 async function setSlot(date, slotKey, side, field, value) {
   const data = await loadDay(date);
@@ -584,15 +585,17 @@ function drawDonut(svgEl, legendEl, counts, total, showHrs) {
 async function drawWeekly() {
   const grid  = document.getElementById('weekGrid');
   grid.innerHTML = '';
-  const today = todayString();
+  const today    = todayString();
+  const weekStart = offsetDate(today, -6);
+  const weekData  = await window.ts.loadRange(weekStart, today);
 
   for (let i = 6; i >= 0; i--) {
     const dateStr = offsetDate(today, -i);
-    const [, , d] = dateStr.split('-').map(Number);
-    const dateObj = new Date(...dateStr.split('-').map(Number).map((v,i)=>i===1?v-1:v));
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dateObj = new Date(y, m - 1, d);
     const dayAbbr = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
 
-    const data   = await loadDay(dateStr);
+    const data   = weekData[dateStr] || {};
     const counts = getCatCountsFromData(data, 'actual');
     const total  = Object.values(counts).reduce((s, v) => s + v, 0);
 
@@ -696,7 +699,7 @@ function navigateSlot(slotKey, side, dir) {
 // ── Category Picker ───────────────────────────────────────────────────────────
 function buildPicker() {
   const picker = document.getElementById('catPicker');
-  picker.querySelectorAll('.cat-opt').forEach(el => el.remove());
+  picker.innerHTML = '<div class="cat-picker-title">Category</div>';
   CATEGORIES.forEach(cat => {
     const opt = document.createElement('div');
     opt.className = 'cat-opt';
@@ -766,6 +769,7 @@ function formatDateLabel(dateStr) {
 function shiftDate(days) { currentDate = offsetDate(currentDate, days); onDateChange(); }
 
 function onDateChange() {
+  dayCache = null;
   document.getElementById('dateLabel').textContent = formatDateLabel(currentDate);
   document.getElementById('dateInput').value = currentDate;
   document.title = `Timesheet — ${formatDateLabel(currentDate)}`;
@@ -871,7 +875,7 @@ function periodDates(period) {
 
 async function renderStats(period) {
   const { from, to } = periodDates(period);
-  const allData = await window.ts.getAllData();
+  const allData = await window.ts.loadRange(from, to);
 
   // Collect dates in range
   const dates = [];
@@ -925,8 +929,8 @@ async function renderStats(period) {
   showDates.forEach(date => {
     const slots = dailyTotals[date] || 0;
     const data  = allData[date] || {};
-    const [, , dd] = date.split('-').map(Number);
-    const dateObj = new Date(...date.split('-').map((v,i)=>i===1?Number(v)-1:Number(v)));
+    const [dy, dm, dd] = date.split('-').map(Number);
+    const dateObj = new Date(dy, dm - 1, dd);
     const dow = dateObj.toLocaleDateString('en-US',{weekday:'short'});
 
     const col = document.createElement('div');
@@ -1029,7 +1033,7 @@ const { from: ewFrom, to: ewTo } = periodDates('week');
 setExportRange(ewFrom, ewTo);
 
 // Refresh when a reminder is submitted
-window.ts.onRefreshDay(() => { buildTable(); drawChart(); drawWeekly(); });
+window.ts.onRefreshDay(() => { dayCache = null; buildTable(); drawChart(); drawWeekly(); });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {

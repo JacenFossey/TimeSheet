@@ -8,6 +8,7 @@ const Database = require('better-sqlite3');
 const DB_PATH = path.join(app.getPath('userData'), 'timesheet.db');
 
 let db;
+let stmts;
 
 function openDb() {
   db = new Database(DB_PATH);
@@ -54,13 +55,7 @@ function openDb() {
     const seedAll = db.transaction(() => defaults.forEach(r => insert.run(...r)));
     seedAll();
   }
-}
 
-// ── Prepared statements (initialised after openDb) ────────────────────────────
-
-let stmts;
-
-function prepareStmts() {
   stmts = {
     getDay: db.prepare(`
       SELECT slot_key, side, cat, text FROM slots WHERE date = ?
@@ -70,21 +65,19 @@ function prepareStmts() {
       VALUES (@date, @slot_key, @side, @cat, @text)
       ON CONFLICT(date, slot_key, side) DO UPDATE SET cat=excluded.cat, text=excluded.text
     `),
-    deleteDay: db.prepare('DELETE FROM slots WHERE date = ?'),
-    getAllSlots: db.prepare('SELECT date, slot_key, side, cat, text FROM slots ORDER BY date, slot_key, side'),
+    deleteDay:       db.prepare('DELETE FROM slots WHERE date = ?'),
     getSlotsInRange: db.prepare(`
       SELECT date, slot_key, side, cat, text FROM slots
       WHERE date >= ? AND date <= ?
       ORDER BY date, slot_key, side
     `),
-    getCats: db.prepare('SELECT id, label, color FROM categories ORDER BY sort_order'),
-    upsertCat: db.prepare(`
+    getCats:    db.prepare('SELECT id, label, color FROM categories ORDER BY sort_order'),
+    upsertCat:  db.prepare(`
       INSERT INTO categories (id, label, color, sort_order)
       VALUES (@id, @label, @color, @sort_order)
       ON CONFLICT(id) DO UPDATE SET label=excluded.label, color=excluded.color, sort_order=excluded.sort_order
     `),
-    deleteCat: db.prepare('DELETE FROM categories WHERE id = ?'),
-    clearCats: db.prepare('DELETE FROM categories'),
+    clearCats:  db.prepare('DELETE FROM categories'),
   };
 }
 
@@ -98,6 +91,17 @@ function rowsToDay(rows) {
     data[row.slot_key][row.side] = { cat: row.cat, text: row.text };
   }
   return data;
+}
+
+// Convert ranged rows → { date: { slotKey: { side: {cat,text} } } }
+function rowsToRange(rows) {
+  const all = {};
+  for (const row of rows) {
+    if (!all[row.date]) all[row.date] = {};
+    if (!all[row.date][row.slot_key]) all[row.date][row.slot_key] = {};
+    all[row.date][row.slot_key][row.side] = { cat: row.cat, text: row.text };
+  }
+  return all;
 }
 
 // ── Windows ───────────────────────────────────────────────────────────────────
@@ -136,10 +140,11 @@ function createReminder(slotKey, slotLabel, plannedData) {
 
 // ── IPC handlers ──────────────────────────────────────────────────────────────
 
-ipcMain.handle('loadDay', (_, date) => {
-  const rows = stmts.getDay.all(date);
-  return rowsToDay(rows);
-});
+ipcMain.handle('loadDay', (_, date) => rowsToDay(stmts.getDay.all(date)));
+
+ipcMain.handle('loadRange', (_, fromDate, toDate) =>
+  rowsToRange(stmts.getSlotsInRange.all(fromDate, toDate))
+);
 
 ipcMain.handle('saveDay', (_, date, data) => {
   const saveAll = db.transaction(() => {
@@ -163,17 +168,6 @@ ipcMain.handle('saveCategories', (_, cats) => {
     cats.forEach((cat, i) => stmts.upsertCat.run({ id: cat.id, label: cat.label, color: cat.color, sort_order: i }));
   });
   saveAll();
-});
-
-ipcMain.handle('getAllData', () => {
-  const rows = stmts.getAllSlots.all();
-  const all = {};
-  for (const row of rows) {
-    if (!all[row.date]) all[row.date] = {};
-    if (!all[row.date][row.slot_key]) all[row.date][row.slot_key] = {};
-    all[row.date][row.slot_key][row.side] = { cat: row.cat, text: row.text };
-  }
-  return all;
 });
 
 ipcMain.handle('exportData', async (_, fromDate, toDate) => {
@@ -203,17 +197,9 @@ ipcMain.handle('exportJson', async (_, fromDate, toDate) => {
   if (!filePath) return { cancelled: true };
 
   const rows = stmts.getSlotsInRange.all(fromDate, toDate);
-  const all = {};
-  for (const row of rows) {
-    if (!all[row.date]) all[row.date] = {};
-    if (!all[row.date][row.slot_key]) all[row.date][row.slot_key] = {};
-    all[row.date][row.slot_key][row.side] = { cat: row.cat, text: row.text };
-  }
-  fs.writeFileSync(filePath, JSON.stringify(all, null, 2), 'utf8');
+  fs.writeFileSync(filePath, JSON.stringify(rowsToRange(rows), null, 2), 'utf8');
   return { filePath };
 });
-
-ipcMain.handle('reminderReady', () => {});
 
 ipcMain.handle('submitReminder', (_, slotKey, cat, text) => {
   const today = todayString();
@@ -229,12 +215,6 @@ ipcMain.handle('dismissReminder', () => { if (reminderWin) reminderWin.close(); 
 function todayString() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
-
-function offsetDate(dateStr, days) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const dt = new Date(y, m - 1, d + days);
-  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
 }
 
 function msUntilNextQuarter() {
@@ -261,8 +241,7 @@ function fireReminder() {
   const slot = prevSlotInfo();
   if (!slot) return;
   const today = todayString();
-  const rows = stmts.getDay.all(today);
-  const dayData = rowsToDay(rows);
+  const dayData = rowsToDay(stmts.getDay.all(today));
   const planned = (dayData[slot.key] && dayData[slot.key].planned) || null;
   createReminder(slot.key, slot.label, planned);
 }
@@ -278,7 +257,6 @@ function scheduleReminders() {
 
 app.whenReady().then(() => {
   openDb();
-  prepareStmts();
   createMain();
   scheduleReminders();
   app.on('activate', () => { if (!mainWin) createMain(); });
