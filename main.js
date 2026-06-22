@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, screen } = require('electron');
 const path    = require('path');
 const fs      = require('fs');
-const Database = require('better-sqlite3');
+const { Database } = require('node-sqlite3-wasm');
 
 // ── Database setup ────────────────────────────────────────────────────────────
 
@@ -10,10 +10,16 @@ const DB_PATH = path.join(app.getPath('userData'), 'timesheet.db');
 let db;
 let stmts;
 
+function withTransaction(fn) {
+  db.exec('BEGIN');
+  try   { fn(); db.exec('COMMIT'); }
+  catch (e) { db.exec('ROLLBACK'); throw e; }
+}
+
 function openDb() {
   db = new Database(DB_PATH);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
+  db.exec("PRAGMA journal_mode = WAL");
+  db.exec("PRAGMA foreign_keys = ON");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS slots (
@@ -37,7 +43,7 @@ function openDb() {
   const count = db.prepare('SELECT COUNT(*) AS n FROM categories').get().n;
   if (count === 0) {
     const insert = db.prepare(
-      'INSERT INTO categories (id, label, color, sort_order) VALUES (?,?,?,?)'
+      'INSERT INTO categories (id, label, color, sort_order) VALUES (?, ?, ?, ?)'
     );
     const defaults = [
       ['none',     'None',        '#2e3350',  0],
@@ -52,17 +58,16 @@ function openDb() {
       ['wasted',   'Wasted Time', '#991b1b',  9],
       ['other',    'Other',       '#6b7280', 10],
     ];
-    const seedAll = db.transaction(() => defaults.forEach(r => insert.run(...r)));
-    seedAll();
+    withTransaction(() => defaults.forEach(r => insert.run(r)));
   }
 
   stmts = {
-    getDay: db.prepare(`
-      SELECT slot_key, side, cat, text FROM slots WHERE date = ?
-    `),
+    getDay: db.prepare(
+      'SELECT slot_key, side, cat, text FROM slots WHERE date = ?'
+    ),
     upsertSlot: db.prepare(`
       INSERT INTO slots (date, slot_key, side, cat, text)
-      VALUES (@date, @slot_key, @side, @cat, @text)
+      VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(date, slot_key, side) DO UPDATE SET cat=excluded.cat, text=excluded.text
     `),
     deleteDay:       db.prepare('DELETE FROM slots WHERE date = ?'),
@@ -71,19 +76,18 @@ function openDb() {
       WHERE date >= ? AND date <= ?
       ORDER BY date, slot_key, side
     `),
-    getCats:    db.prepare('SELECT id, label, color FROM categories ORDER BY sort_order'),
-    upsertCat:  db.prepare(`
+    getCats:   db.prepare('SELECT id, label, color FROM categories ORDER BY sort_order'),
+    upsertCat: db.prepare(`
       INSERT INTO categories (id, label, color, sort_order)
-      VALUES (@id, @label, @color, @sort_order)
+      VALUES (?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET label=excluded.label, color=excluded.color, sort_order=excluded.sort_order
     `),
-    clearCats:  db.prepare('DELETE FROM categories'),
+    clearCats: db.prepare('DELETE FROM categories'),
   };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Convert flat DB rows → { slotKey: { planned: {cat,text}, actual: {cat,text} } }
 function rowsToDay(rows) {
   const data = {};
   for (const row of rows) {
@@ -93,7 +97,6 @@ function rowsToDay(rows) {
   return data;
 }
 
-// Convert ranged rows → { date: { slotKey: { side: {cat,text} } } }
 function rowsToRange(rows) {
   const all = {};
   for (const row of rows) {
@@ -140,34 +143,32 @@ function createReminder(slotKey, slotLabel, plannedData) {
 
 // ── IPC handlers ──────────────────────────────────────────────────────────────
 
-ipcMain.handle('loadDay', (_, date) => rowsToDay(stmts.getDay.all(date)));
+ipcMain.handle('loadDay', (_, date) => rowsToDay(stmts.getDay.all([date])));
 
 ipcMain.handle('loadRange', (_, fromDate, toDate) =>
-  rowsToRange(stmts.getSlotsInRange.all(fromDate, toDate))
+  rowsToRange(stmts.getSlotsInRange.all([fromDate, toDate]))
 );
 
 ipcMain.handle('saveDay', (_, date, data) => {
-  const saveAll = db.transaction(() => {
-    stmts.deleteDay.run(date);
+  withTransaction(() => {
+    stmts.deleteDay.run([date]);
     for (const [slot_key, sides] of Object.entries(data)) {
       for (const [side, val] of Object.entries(sides)) {
         if (val && (val.cat !== 'none' || val.text)) {
-          stmts.upsertSlot.run({ date, slot_key, side, cat: val.cat || 'none', text: val.text || '' });
+          stmts.upsertSlot.run([date, slot_key, side, val.cat || 'none', val.text || '']);
         }
       }
     }
   });
-  saveAll();
 });
 
 ipcMain.handle('loadCategories', () => stmts.getCats.all());
 
 ipcMain.handle('saveCategories', (_, cats) => {
-  const saveAll = db.transaction(() => {
+  withTransaction(() => {
     stmts.clearCats.run();
-    cats.forEach((cat, i) => stmts.upsertCat.run({ id: cat.id, label: cat.label, color: cat.color, sort_order: i }));
+    cats.forEach((cat, i) => stmts.upsertCat.run([cat.id, cat.label, cat.color, i]));
   });
-  saveAll();
 });
 
 ipcMain.handle('exportData', async (_, fromDate, toDate) => {
@@ -178,7 +179,7 @@ ipcMain.handle('exportData', async (_, fromDate, toDate) => {
   });
   if (!filePath) return { cancelled: true };
 
-  const rows = stmts.getSlotsInRange.all(fromDate, toDate);
+  const rows = stmts.getSlotsInRange.all([fromDate, toDate]);
   const lines = ['Date,Time,Side,Category,Text'];
   for (const row of rows) {
     const esc = s => `"${(s||'').replace(/"/g,'""')}"`;
@@ -196,14 +197,14 @@ ipcMain.handle('exportJson', async (_, fromDate, toDate) => {
   });
   if (!filePath) return { cancelled: true };
 
-  const rows = stmts.getSlotsInRange.all(fromDate, toDate);
+  const rows = stmts.getSlotsInRange.all([fromDate, toDate]);
   fs.writeFileSync(filePath, JSON.stringify(rowsToRange(rows), null, 2), 'utf8');
   return { filePath };
 });
 
 ipcMain.handle('submitReminder', (_, slotKey, cat, text) => {
   const today = todayString();
-  stmts.upsertSlot.run({ date: today, slot_key: slotKey, side: 'actual', cat: cat || 'none', text: text || '' });
+  stmts.upsertSlot.run([today, slotKey, 'actual', cat || 'none', text || '']);
   if (mainWin) mainWin.webContents.send('refreshDay');
   if (reminderWin) reminderWin.close();
 });
@@ -240,8 +241,7 @@ function prevSlotInfo() {
 function fireReminder() {
   const slot = prevSlotInfo();
   if (!slot) return;
-  const today = todayString();
-  const dayData = rowsToDay(stmts.getDay.all(today));
+  const dayData = rowsToDay(stmts.getDay.all([todayString()]));
   const planned = (dayData[slot.key] && dayData[slot.key].planned) || null;
   createReminder(slot.key, slot.label, planned);
 }

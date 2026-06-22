@@ -6,22 +6,19 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "postinstall": "electron-rebuild -f -w better-sqlite3",
     "dist": "electron-builder"
   },
   "dependencies": {
-    "better-sqlite3": "^11.10.0"
+    "node-sqlite3-wasm": "^0.8.31"
   },
   "devDependencies": {
-    "@electron/rebuild": "^3.7.1",
     "electron": "^42.4.1",
     "electron-builder": "^25.1.8"
   },
   "build": {
     "appId": "com.keypak.timesheet",
     "productName": "Timesheet",
-    "npmRebuild": false,
-    "asarUnpack": ["node_modules/better-sqlite3/**/*"],
+    "asarUnpack": ["node_modules/node-sqlite3-wasm/**/*"],
     "files": [
       "main.js",
       "preload.js",
@@ -34,8 +31,7 @@
       "signAndEditExecutable": false
     },
     "nsis": {
-      "oneClick": true,
-      "installerIcon": null
+      "oneClick": true
     }
   }
 }
