@@ -25,10 +25,16 @@ jobs:
           path: ~\AppData\Local\electron-builder\Cache
           key: ebuilder-${{ hashFiles('package-lock.json') }}
 
+      - uses: microsoft/setup-msbuild@v2
+
       - name: Install dependencies
+        env:
+          GYP_MSVS_VERSION: '2022'
         run: npm ci
 
       - name: Build installer
+        env:
+          GYP_MSVS_VERSION: '2022'
         run: npm run dist
 
       - name: Create GitHub Release
