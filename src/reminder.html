@@ -66,6 +66,13 @@
   .planned-label { color: var(--text-muted); white-space: nowrap; padding-top: 1px; }
   .planned-text  { color: var(--text); flex: 1; }
 
+  .next-row {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 2px 2px 0; font-size: 11px;
+  }
+  .next-label { color: var(--accent); white-space: nowrap; padding-top: 1px; font-weight: 600; }
+  .next-text  { color: var(--text-muted); flex: 1; }
+
   .input-row { display: flex; align-items: center; gap: 8px; }
   .cat-btn {
     width: 14px; height: 14px; border-radius: 50%; border: none;
@@ -100,6 +107,7 @@
     border: 1px solid var(--border); border-radius: 8px;
     padding: 8px; display: none; flex-direction: column; gap: 3px;
     box-shadow: 0 6px 20px rgba(0,0,0,.5); min-width: 140px;
+    overflow-y: auto;
   }
   .cat-picker.open { display: flex; }
   .cat-opt {
@@ -143,6 +151,11 @@
     <button class="cat-btn" id="catBtn" style="background:#2e3350" title="Set category"></button>
     <input class="actual-input" id="actualInput" type="text" placeholder="Describe what you did…" autocomplete="off" autofocus>
   </div>
+
+  <div class="next-row" id="nextRow" style="display:none">
+    <span class="next-label">Up next:</span>
+    <span class="next-text" id="nextText"></span>
+  </div>
 </div>
 
 <div class="footer">
@@ -161,7 +174,7 @@ let countdown    = 120;
 let countdownInt = null;
 
 // Receive data from main
-window.ts.onReminderData(async ({ slotKey: sk, slotLabel, plannedData }) => {
+window.ts.onReminderData(async ({ slotKey: sk, slotLabel, plannedData, nextLabel, nextData }) => {
   slotKey = sk;
   document.getElementById('slotTimeLabel').textContent = slotLabel;
 
@@ -177,6 +190,15 @@ window.ts.onReminderData(async ({ slotKey: sk, slotLabel, plannedData }) => {
     // Pre-select planned category
     if (plannedData.cat && plannedData.cat !== 'none') setCategory(plannedData.cat);
     if (plannedData.text) document.getElementById('actualInput').value = plannedData.text;
+  }
+
+  // "Up next" — planned entry for the slot now beginning
+  if (nextData && (nextData.text || (nextData.cat && nextData.cat !== 'none'))) {
+    document.getElementById('nextRow').style.display = 'flex';
+    const nCat = CAT_MAP[nextData.cat];
+    const timePrefix = nextLabel ? `${nextLabel} — ` : '';
+    document.getElementById('nextText').textContent =
+      timePrefix + (nCat && nCat.id !== 'none' ? `[${nCat.label}] ` : '') + (nextData.text || '');
   }
 
   // Select all text so user can just start typing
@@ -222,10 +244,26 @@ function buildPicker() {
 document.getElementById('catBtn').addEventListener('click', e => {
   e.stopPropagation();
   const picker = document.getElementById('catPicker');
+  if (picker.classList.contains('open')) { closePicker(); return; }
+
   const rect   = e.currentTarget.getBoundingClientRect();
-  picker.style.top  = (rect.bottom + 4) + 'px';
+  const margin = 6;
+  const spaceBelow = window.innerHeight - rect.bottom - margin;
+  const spaceAbove = rect.top - margin;
+
+  // Open in whichever direction has more room, and cap height to that space
+  // so the list scrolls instead of being clipped by the (fixed-size) window.
   picker.style.left = rect.left + 'px';
-  picker.classList.toggle('open');
+  if (spaceBelow >= spaceAbove) {
+    picker.style.top       = (rect.bottom + 4) + 'px';
+    picker.style.bottom    = 'auto';
+    picker.style.maxHeight = Math.max(spaceBelow, 80) + 'px';
+  } else {
+    picker.style.bottom    = (window.innerHeight - rect.top + 4) + 'px';
+    picker.style.top       = 'auto';
+    picker.style.maxHeight = Math.max(spaceAbove, 80) + 'px';
+  }
+  picker.classList.add('open');
 });
 document.addEventListener('click', () => closePicker());
 function closePicker() { document.getElementById('catPicker').classList.remove('open'); }

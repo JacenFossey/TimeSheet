@@ -137,7 +137,7 @@ function createMain() {
   });
 }
 
-function createReminder(slotKey, slotLabel, plannedData) {
+function createReminder(slotKey, slotLabel, plannedData, nextLabel, nextData) {
   if (reminderWin) { reminderWin.focus(); return; }
   const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
   const W = 360, H = 220;
@@ -150,7 +150,7 @@ function createReminder(slotKey, slotLabel, plannedData) {
   reminderWin.loadFile(path.join(__dirname, 'src', 'reminder.html'));
   reminderWin.on('closed', () => { reminderWin = null; });
   reminderWin.webContents.once('did-finish-load', () => {
-    reminderWin.webContents.send('reminderData', { slotKey, slotLabel, plannedData });
+    reminderWin.webContents.send('reminderData', { slotKey, slotLabel, plannedData, nextLabel, nextData });
   });
   setTimeout(() => { if (reminderWin) reminderWin.close(); }, 2 * 60 * 1000);
 }
@@ -232,11 +232,29 @@ function prevSlotInfo() {
   };
 }
 
+function currentSlotInfo() {
+  const now      = new Date();
+  const totalMin = now.getHours() * 60 + now.getMinutes();
+  const curMin   = Math.floor(totalMin / 15) * 15;
+  const h = Math.floor(curMin / 60), m = curMin % 60;
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return {
+    key:   `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`,
+    label: `${h12}:${String(m).padStart(2,'0')} ${h < 12 ? 'AM' : 'PM'}`,
+  };
+}
+
 function fireReminder() {
   const slot = prevSlotInfo();
   if (!slot) return;
   const dayData = readDay(todayString());
-  createReminder(slot.key, slot.label, (dayData[slot.key] && dayData[slot.key].planned) || null);
+  const next    = currentSlotInfo();
+  const nextData = (dayData[next.key] && dayData[next.key].planned) || null;
+  createReminder(
+    slot.key, slot.label,
+    (dayData[slot.key] && dayData[slot.key].planned) || null,
+    next.label, nextData,
+  );
 }
 
 function scheduleReminders() {
