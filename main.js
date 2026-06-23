@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, screen, Tray, Menu, nativeImage } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs   = require('fs');
@@ -107,7 +107,22 @@ function migrateFromSqlite() {
 
 // ── Windows ───────────────────────────────────────────────────────────────────
 
-let mainWin = null, reminderWin = null;
+let mainWin = null, reminderWin = null, tray = null, isQuitting = false;
+
+function createTray() {
+  const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.png')).resize({ width: 16, height: 16 });
+  tray = new Tray(icon);
+  tray.setToolTip('Timesheet');
+  tray.on('click', () => {
+    if (mainWin) { mainWin.show(); mainWin.focus(); }
+    else createMain();
+  });
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Open Timesheet', click: () => { if (mainWin) { mainWin.show(); mainWin.focus(); } else createMain(); } },
+    { type: 'separator' },
+    { label: 'Quit', click: () => { isQuitting = true; app.quit(); } },
+  ]));
+}
 
 function createMain() {
   mainWin = new BrowserWindow({
@@ -116,7 +131,9 @@ function createMain() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
   });
   mainWin.loadFile(path.join(__dirname, 'src', 'index.html'));
-  mainWin.on('closed', () => { mainWin = null; });
+  mainWin.on('close', (e) => {
+    if (!isQuitting) { e.preventDefault(); mainWin.hide(); }
+  });
 }
 
 function createReminder(slotKey, slotLabel, plannedData) {
@@ -267,13 +284,14 @@ if (!gotLock) {
   app.whenReady().then(() => {
     initPaths();
     migrateFromSqlite();
+    createTray();
     createMain();
     scheduleReminders();
     setupAutoUpdate();
-    app.on('activate', () => { if (!mainWin) createMain(); });
+    app.on('activate', () => { if (!mainWin) { mainWin = null; createMain(); } });
   });
 
-  app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') app.quit();
-  });
+  // App stays alive in tray — only quit via tray menu
+  app.on('window-all-closed', () => {});
+  app.on('before-quit', () => { isQuitting = true; });
 }
