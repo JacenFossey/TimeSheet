@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('ts', {
   // Reminder window
   submitReminder:   (slotKey, cat, text) => ipcRenderer.invoke('submitReminder', slotKey, cat, text),
   dismissReminder:  ()             => ipcRenderer.invoke('dismissReminder'),
+  resizeReminder:   (height)       => ipcRenderer.invoke('resizeReminder', height),
 
   onReminderData:   (cb)           => ipcRenderer.on('reminderData', (_, d) => cb(d)),
   onRefreshDay:     (cb)           => ipcRenderer.on('refreshDay', () => cb()),

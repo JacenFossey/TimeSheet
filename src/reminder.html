@@ -118,6 +118,9 @@
   .cat-opt:hover { background: var(--border); }
   .cat-opt.selected { border-color: rgba(255,255,255,.15); background: rgba(255,255,255,.06); }
   .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .cat-picker::-webkit-scrollbar { width: 6px; }
+  .cat-picker::-webkit-scrollbar-track { background: transparent; }
+  .cat-picker::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
   /* countdown bar */
   .countdown-bar {
@@ -206,6 +209,13 @@ window.ts.onReminderData(async ({ slotKey: sk, slotLabel, plannedData, nextLabel
   inp.focus(); inp.select();
 
   startCountdown();
+
+  // Fit the window to its content so the footer (Skip/Save) is never clipped —
+  // long planned/next text can wrap and overflow the default height.
+  requestAnimationFrame(() => {
+    const h = document.body.scrollHeight;
+    if (h > window.innerHeight) window.ts.resizeReminder(Math.ceil(h));
+  });
 });
 
 function startCountdown() {

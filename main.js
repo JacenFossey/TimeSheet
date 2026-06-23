@@ -180,6 +180,17 @@ ipcMain.handle('submitReminder', (_, slotKey, cat, text) => {
 
 ipcMain.handle('dismissReminder', () => { if (reminderWin) reminderWin.close(); });
 
+// Resize the reminder window to fit its content (so the footer is never
+// clipped). Stays anchored to the bottom-right corner. Returns applied height.
+ipcMain.handle('resizeReminder', (_, height) => {
+  if (!reminderWin) return height;
+  const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
+  const w = reminderWin.getSize()[0];
+  const h = Math.min(Math.round(height), sh - 32);
+  reminderWin.setBounds({ x: sw - w - 16, y: sh - h - 16, width: w, height: h });
+  return h;
+});
+
 // ── Reminders ─────────────────────────────────────────────────────────────────
 
 function todayString() {
