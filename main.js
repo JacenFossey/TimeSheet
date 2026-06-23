@@ -128,6 +128,7 @@ function createMain() {
   mainWin = new BrowserWindow({
     width: 1200, height: 900, minWidth: 800, minHeight: 600,
     title: 'Timesheet', backgroundColor: '#0f1117',
+    icon: path.join(__dirname, 'assets', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
   });
   mainWin.loadFile(path.join(__dirname, 'src', 'index.html'));
