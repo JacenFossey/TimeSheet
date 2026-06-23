@@ -79,32 +79,6 @@ function writeCategories(cats) {
   fs.writeFileSync(CATS_FILE, JSON.stringify(cats), 'utf8');
 }
 
-// ── Migration from SQLite (v1.1/v1.2) ────────────────────────────────────────
-// Runs once on first launch after upgrade. Safe to remove after v1.4.0.
-function migrateFromSqlite() {
-  const dbPath = path.join(app.getPath('userData'), 'timesheet.db');
-  if (!fs.existsSync(dbPath) || fs.existsSync(CATS_FILE)) return;
-  try {
-    const { Database } = require('node-sqlite3-wasm');
-    const db = new Database(dbPath);
-
-    const cats = db.prepare('SELECT id, label, color FROM categories ORDER BY sort_order').all();
-    if (cats.length) writeCategories(cats);
-
-    const slots = db.prepare('SELECT date, slot_key, side, cat, text FROM slots').all();
-    const byDate = {};
-    for (const r of slots) {
-      if (!byDate[r.date]) byDate[r.date] = {};
-      if (!byDate[r.date][r.slot_key]) byDate[r.date][r.slot_key] = {};
-      byDate[r.date][r.slot_key][r.side] = { cat: r.cat, text: r.text };
-    }
-    for (const [date, data] of Object.entries(byDate)) writeDay(date, data);
-
-    db.close();
-    fs.renameSync(dbPath, dbPath + '.migrated');
-  } catch {} // silently skip — user starts fresh if migration fails
-}
-
 // ── Windows ───────────────────────────────────────────────────────────────────
 
 let mainWin = null, reminderWin = null, tray = null, isQuitting = false;
@@ -219,24 +193,9 @@ function msUntilNextQuarter() {
   return 15 * 60 * 1000 - msIntoQ;
 }
 
-function prevSlotInfo() {
-  const now      = new Date();
-  const totalMin = now.getHours() * 60 + now.getMinutes();
-  const prevMin  = Math.floor(totalMin / 15) * 15 - 15;
-  if (prevMin < 0) return null;
-  const h = Math.floor(prevMin / 60), m = prevMin % 60;
-  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return {
-    key:   `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`,
-    label: `${h12}:${String(m).padStart(2,'0')} ${h < 12 ? 'AM' : 'PM'}`,
-  };
-}
-
-function currentSlotInfo() {
-  const now      = new Date();
-  const totalMin = now.getHours() * 60 + now.getMinutes();
-  const curMin   = Math.floor(totalMin / 15) * 15;
-  const h = Math.floor(curMin / 60), m = curMin % 60;
+function slotInfoAt(min) {
+  if (min < 0) return null;
+  const h = Math.floor(min / 60), m = min % 60;
   const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
   return {
     key:   `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`,
@@ -245,10 +204,12 @@ function currentSlotInfo() {
 }
 
 function fireReminder() {
-  const slot = prevSlotInfo();
+  const now    = new Date();
+  const curMin = Math.floor((now.getHours() * 60 + now.getMinutes()) / 15) * 15;
+  const slot   = slotInfoAt(curMin - 15);
   if (!slot) return;
   const dayData = readDay(todayString());
-  const next    = currentSlotInfo();
+  const next    = slotInfoAt(curMin);
   const nextData = (dayData[next.key] && dayData[next.key].planned) || null;
   createReminder(
     slot.key, slot.label,
@@ -302,7 +263,6 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     initPaths();
-    migrateFromSqlite();
     createTray();
     createMain();
     scheduleReminders();

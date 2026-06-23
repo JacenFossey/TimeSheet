@@ -823,7 +823,6 @@ function buildPicker() {
   });
 }
 
-let pickerOpenScrollY = null;
 function openPicker(e, slotKey, side, btnEl) {
   e.stopPropagation();
   const picker = document.getElementById('catPicker');
@@ -837,7 +836,6 @@ function openPicker(e, slotKey, side, btnEl) {
   picker.style.top  = (rect.bottom + 6) + 'px';
   picker.style.left = rect.left + 'px';
   picker.classList.add('open');
-  pickerOpenScrollY = window.scrollY;
   const pr = picker.getBoundingClientRect();
   if (pr.right > window.innerWidth - 10) picker.style.left = (window.innerWidth - pr.width - 10) + 'px';
   if (pr.bottom > window.innerHeight - 10) picker.style.top = (rect.top - pr.height - 6) + 'px';
@@ -856,7 +854,6 @@ function selectCategory(catId) {
 function closePicker() {
   document.getElementById('catPicker').classList.remove('open');
   pickerTarget = null;
-  pickerOpenScrollY = null;
 }
 
 document.addEventListener('click', e => {

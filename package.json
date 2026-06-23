@@ -9,8 +9,7 @@
     "dist": "electron-builder"
   },
   "dependencies": {
-    "electron-updater": "^6.3.9",
-    "node-sqlite3-wasm": "^0.8.31"
+    "electron-updater": "^6.3.9"
   },
   "devDependencies": {
     "electron": "^42.4.1",
@@ -19,7 +18,6 @@
   "build": {
     "appId": "com.keypak.timesheet",
     "productName": "Timesheet",
-    "asarUnpack": ["node_modules/node-sqlite3-wasm/**/*"],
     "files": [
       "main.js",
       "preload.js",
