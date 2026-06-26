@@ -230,7 +230,16 @@ function fireReminder() {
 }
 
 function scheduleReminders() {
-  setTimeout(() => { fireReminder(); setInterval(fireReminder, 15 * 60 * 1000); }, msUntilNextQuarter());
+  // Re-align to the next quarter-hour boundary after every fire instead of using
+  // a fixed setInterval. A fixed interval drifts (and doesn't account for the
+  // machine sleeping), so reminders would gradually fall behind the wall clock.
+  setTimeout(() => {
+    // A timer that came due while the machine was asleep fires immediately on
+    // wake. If we're well past the boundary, that reminder is stale — skip it and
+    // just wait for the next quarter-hour.
+    if (15 * 60 * 1000 - msUntilNextQuarter() < 60 * 1000) fireReminder();
+    scheduleReminders();
+  }, msUntilNextQuarter());
 }
 
 // ── Auto-update ───────────────────────────────────────────────────────────────
