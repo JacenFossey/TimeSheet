@@ -254,6 +254,31 @@
   .cat-table td:last-child { text-align: right; font-weight: 600; color: var(--text); white-space: nowrap; padding-left: 12px; }
   .ct-bar { height: 4px; border-radius: 2px; margin-top: 4px; opacity: 0.5; transition: width .3s; }
 
+  /* KPI trend indicator */
+  .sc-trend { font-size: 11px; font-weight: 600; margin-top: 4px; }
+  .sc-trend.up   { color: #22c55e; }
+  .sc-trend.down { color: #ef4444; }
+  .sc-trend.flat { color: var(--text-muted); }
+
+  /* Planned vs Actual */
+  .pva-list { display: flex; flex-direction: column; gap: 12px; }
+  .pva-row  { display: flex; flex-direction: column; gap: 4px; }
+  .pva-head { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); }
+  .pva-track { display: flex; align-items: center; gap: 8px; }
+  .pva-tag  { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); width: 42px; flex-shrink: 0; }
+  .pva-bar-bg { flex: 1; height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+  .pva-bar  { height: 100%; border-radius: 4px; transition: width .3s ease; }
+  .pva-bar.planned { opacity: .4; }
+  .pva-hrs  { font-size: 10px; color: var(--text-muted); width: 34px; text-align: right; flex-shrink: 0; font-weight: 600; }
+
+  /* Average by weekday */
+  .weekday-chart { display: flex; align-items: flex-end; gap: 6px; height: 130px; }
+  .wd-col      { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; height: 100%; }
+  .wd-val      { font-size: 9px; color: var(--text); font-weight: 600; min-height: 12px; }
+  .wd-bar-wrap { width: 100%; flex: 1; display: flex; align-items: flex-end; }
+  .wd-bar      { width: 100%; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; transition: height .3s ease; }
+  .wd-label    { font-size: 9px; color: var(--text-muted); }
+
   /* ══════════════════════════════════════════════════════════════
      EXPORT TAB
   ══════════════════════════════════════════════════════════════ */
@@ -378,7 +403,7 @@
 
     <div class="stats-row">
       <div class="stats-card">
-        <div class="stats-card-title">Hours per Day</div>
+        <div class="stats-card-title">Hours per Day <span id="barPeak" style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0"></span></div>
         <div class="bar-chart-wrap">
           <div class="bar-chart" id="barChart"></div>
         </div>
@@ -391,6 +416,17 @@
             <table class="cat-table" id="catBreakTable"></table>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stats-card">
+        <div class="stats-card-title">Planned vs Actual</div>
+        <div class="pva-list" id="pvaList"></div>
+      </div>
+      <div class="stats-card">
+        <div class="stats-card-title">Average by Weekday</div>
+        <div class="weekday-chart" id="weekdayChart"></div>
       </div>
     </div>
   </div>
@@ -992,39 +1028,83 @@ async function renderStats(period) {
   let d = from;
   while (d <= to) { dates.push(d); d = offsetDate(d, 1); }
 
-  // Per-day hours & category counts
+  // Per-day hours, category counts (planned + actual), adherence, weekday totals
   let totalSlots = 0, totalDays = 0, maxDay = 0;
-  const catCounts  = {};
-  const dailyTotals = {};
+  let plannedWithCat = 0, adhered = 0;
+  const catCounts     = {};   // actual
+  const plannedCounts = {};   // planned
+  const dailyTotals   = {};
+  const weekdayHours  = [0,0,0,0,0,0,0];   // index = getDay() (0=Sun)
+  const weekdayDays   = [0,0,0,0,0,0,0];
+  const WD = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
   dates.forEach(date => {
     const data = allData[date] || {};
-    const daySlots = SLOTS.reduce((sum, s) => {
-      const a = (data[s.key] && data[s.key].actual) || { cat: 'none' };
-      if (a.cat !== 'none') {
-        catCounts[a.cat] = (catCounts[a.cat] || 0) + 1;
-        return sum + 1;
+    const [yy, mm, dd] = date.split('-').map(Number);
+    const dow = new Date(yy, mm - 1, dd).getDay();
+    let daySlots = 0;
+    SLOTS.forEach(s => {
+      const cell = data[s.key] || {};
+      const a = cell.actual  || { cat: 'none' };
+      const p = cell.planned || { cat: 'none' };
+      if (a.cat !== 'none') { catCounts[a.cat] = (catCounts[a.cat] || 0) + 1; daySlots++; }
+      if (p.cat !== 'none') {
+        plannedCounts[p.cat] = (plannedCounts[p.cat] || 0) + 1;
+        plannedWithCat++;
+        if (a.cat === p.cat) adhered++;
       }
-      return sum;
-    }, 0);
-    if (daySlots > 0) {
-      totalDays++;
-      totalSlots += daySlots;
-      maxDay = Math.max(maxDay, daySlots);
-    }
+    });
+    if (daySlots > 0) { totalDays++; totalSlots += daySlots; maxDay = Math.max(maxDay, daySlots); }
     dailyTotals[date] = daySlots;
+    weekdayHours[dow] += daySlots * 0.25;
+    weekdayDays[dow]  += 1;
   });
 
   const totalHours = totalSlots * 0.25;
   const avgHours   = totalDays > 0 ? totalHours / totalDays : 0;
   const topCatId   = Object.entries(catCounts).sort((a,b)=>b[1]-a[1])[0];
   const topCat     = topCatId ? CAT_MAP[topCatId[0]] : null;
+  const adherence  = plannedWithCat > 0 ? Math.round(adhered / plannedWithCat * 100) : null;
+
+  // Tracking streak: consecutive active days ending at the latest date in range
+  let streak = 0;
+  for (let i = dates.length - 1; i >= 0; i--) {
+    if ((dailyTotals[dates[i]] || 0) > 0) streak++; else break;
+  }
+
+  // Most productive weekday (highest average over its occurrences in range)
+  let bestWd = null, bestWdAvg = 0;
+  for (let i = 0; i < 7; i++) {
+    const avg = weekdayDays[i] > 0 ? weekdayHours[i] / weekdayDays[i] : 0;
+    if (avg > bestWdAvg) { bestWdAvg = avg; bestWd = i; }
+  }
+
+  // Trend: total hours vs the immediately-preceding equal-length period
+  const prevTo   = offsetDate(from, -1);
+  const prevFrom = offsetDate(prevTo, -(dates.length - 1));
+  const prevData = await window.ts.loadRange(prevFrom, prevTo);
+  let prevSlots = 0;
+  Object.values(prevData).forEach(day =>
+    SLOTS.forEach(s => {
+      const a = (day[s.key] && day[s.key].actual) || { cat: 'none' };
+      if (a.cat !== 'none') prevSlots++;
+    }));
+  const prevHours = prevSlots * 0.25;
+  let trendHtml = '';
+  if (prevHours > 0) {
+    const pct   = Math.round((totalHours - prevHours) / prevHours * 100);
+    const cls   = pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat';
+    const arrow = pct > 0 ? '▲' : pct < 0 ? '▼' : '–';
+    trendHtml = `<div class="sc-trend ${cls}">${arrow} ${Math.abs(pct)}% vs prev</div>`;
+  }
 
   // KPI cards
   document.getElementById('statsKpi').innerHTML = `
-    <div class="stat-card"><div class="sc-label">Total Hours</div><div class="sc-value">${totalHours.toFixed(1)}</div><div class="sc-sub">${totalDays} active day${totalDays!==1?'s':''}</div></div>
+    <div class="stat-card"><div class="sc-label">Total Hours</div><div class="sc-value">${totalHours.toFixed(1)}</div><div class="sc-sub">${totalDays} active day${totalDays!==1?'s':''}</div>${trendHtml}</div>
     <div class="stat-card"><div class="sc-label">Avg / Day</div><div class="sc-value">${avgHours.toFixed(1)}h</div><div class="sc-sub">on active days</div></div>
-    <div class="stat-card"><div class="sc-label">Best Day</div><div class="sc-value">${(maxDay*0.25).toFixed(1)}h</div><div class="sc-sub">&nbsp;</div></div>
+    <div class="stat-card"><div class="sc-label">Streak</div><div class="sc-value">${streak}</div><div class="sc-sub">consecutive day${streak!==1?'s':''}</div></div>
+    <div class="stat-card"><div class="sc-label">Plan Adherence</div><div class="sc-value">${adherence===null?'—':adherence+'%'}</div><div class="sc-sub">${adherence===null?'no plans set':'actual matched plan'}</div></div>
+    <div class="stat-card"><div class="sc-label">Best Weekday</div><div class="sc-value" style="font-size:18px">${bestWd===null?'—':WD[bestWd]}</div><div class="sc-sub">${bestWd===null?'&nbsp;':bestWdAvg.toFixed(1)+'h avg'}</div></div>
     <div class="stat-card"><div class="sc-label">Top Category</div><div class="sc-value" style="font-size:16px">${topCat ? topCat.label : '—'}</div><div class="sc-sub">${topCatId ? (topCatId[1]*0.25).toFixed(1)+'h' : ''}</div></div>
   `;
 
@@ -1035,6 +1115,7 @@ async function renderStats(period) {
   const BAR_MAX = 60;
   const showDates = dates.length > BAR_MAX ? dates.slice(-BAR_MAX) : dates;
   const barMax = Math.max(...showDates.map(d => dailyTotals[d] || 0), 1);
+  document.getElementById('barPeak').textContent = maxDay > 0 ? `· peak ${(maxDay*0.25).toFixed(1)}h` : '';
 
   showDates.forEach(date => {
     const slots = dailyTotals[date] || 0;
@@ -1107,6 +1188,41 @@ async function renderStats(period) {
     catTable.appendChild(tr);
   });
   if (sorted.length === 0) catTable.innerHTML = '<tr><td colspan="2" style="color:var(--text-muted);text-align:center;padding:12px">No data</td></tr>';
+
+  // ── Planned vs Actual (per category) ──
+  const pvaList = document.getElementById('pvaList');
+  pvaList.innerHTML = '';
+  const pvaCats = [...new Set([...Object.keys(plannedCounts), ...Object.keys(catCounts)])];
+  const pvaMax  = Math.max(1, ...pvaCats.map(c => Math.max(plannedCounts[c]||0, catCounts[c]||0)));
+  pvaCats
+    .sort((a,b) => Math.max(catCounts[b]||0, plannedCounts[b]||0) - Math.max(catCounts[a]||0, plannedCounts[a]||0))
+    .forEach(catId => {
+      const cat = CAT_MAP[catId]; if (!cat) return;
+      const pl = plannedCounts[catId] || 0, ac = catCounts[catId] || 0;
+      const row = document.createElement('div');
+      row.className = 'pva-row';
+      row.innerHTML = `
+        <div class="pva-head"><span class="dot" style="background:${cat.color};width:9px;height:9px;flex-shrink:0"></span>${cat.label}</div>
+        <div class="pva-track"><span class="pva-tag">Plan</span><div class="pva-bar-bg"><div class="pva-bar planned" style="width:${pl/pvaMax*100}%;background:${cat.color}"></div></div><span class="pva-hrs">${(pl*0.25).toFixed(1)}h</span></div>
+        <div class="pva-track"><span class="pva-tag">Actual</span><div class="pva-bar-bg"><div class="pva-bar" style="width:${ac/pvaMax*100}%;background:${cat.color}"></div></div><span class="pva-hrs">${(ac*0.25).toFixed(1)}h</span></div>
+      `;
+      pvaList.appendChild(row);
+    });
+  if (pvaCats.length === 0) pvaList.innerHTML = '<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:12px">No data</div>';
+
+  // ── Average by weekday (Mon → Sun) ──
+  const weekdayChart = document.getElementById('weekdayChart');
+  weekdayChart.innerHTML = '';
+  const wdOrder = [1,2,3,4,5,6,0];
+  const wdAvgs  = wdOrder.map(idx => ({ idx, avg: weekdayDays[idx] > 0 ? weekdayHours[idx]/weekdayDays[idx] : 0 }));
+  const wdMax   = Math.max(0.1, ...wdAvgs.map(w => w.avg));
+  wdAvgs.forEach(w => {
+    const col = document.createElement('div');
+    col.className = 'wd-col';
+    col.title = `${WD[w.idx]}: ${w.avg.toFixed(1)}h avg`;
+    col.innerHTML = `<div class="wd-val">${w.avg > 0 ? w.avg.toFixed(1) : ''}</div><div class="wd-bar-wrap"><div class="wd-bar" style="height:${w.avg/wdMax*100}%"></div></div><div class="wd-label">${WD[w.idx]}</div>`;
+    weekdayChart.appendChild(col);
+  });
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────

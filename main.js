@@ -214,6 +214,15 @@ function slotInfoAt(min) {
   };
 }
 
+// "7:00 – 7:15 AM" — collapse the meridiem when start and end share it.
+function blockLabel(startMin, endMin) {
+  const a = slotInfoAt(startMin), b = slotInfoAt(endMin);
+  if (!a) return '';
+  if (!b) return a.label;
+  const sameMeridiem = a.label.slice(-2) === b.label.slice(-2);
+  return `${sameMeridiem ? a.label.slice(0, -3) : a.label} – ${b.label}`;
+}
+
 function fireReminder() {
   const now    = new Date();
   const curMin = Math.floor((now.getHours() * 60 + now.getMinutes()) / 15) * 15;
@@ -223,9 +232,9 @@ function fireReminder() {
   const next    = slotInfoAt(curMin);
   const nextData = (dayData[next.key] && dayData[next.key].planned) || null;
   createReminder(
-    slot.key, slot.label,
+    slot.key, blockLabel(curMin - 15, curMin),
     (dayData[slot.key] && dayData[slot.key].planned) || null,
-    next.label, nextData,
+    blockLabel(curMin, curMin + 15), nextData,
   );
 }
 
