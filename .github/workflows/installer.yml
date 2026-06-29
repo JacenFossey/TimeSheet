@@ -1,10 +1,14 @@
 name: Test installer
 
-# Manually-triggered full build that produces a runnable NSIS installer as an
-# artifact, with updater artifact-signing disabled (no key needed yet). Use this
-# to verify the app actually runs before wiring signing + tagging a release.
+# Full build that produces a runnable NSIS installer as an artifact, with updater
+# artifact-signing disabled (no key needed yet). Use this to verify the app runs
+# before wiring signing + tagging a release.
+# ponytail: the `push` trigger is temporary so this runs on the feature branch
+# (workflow_dispatch only resolves on the default branch). Remove before merging.
 on:
   workflow_dispatch:
+  push:
+    branches: [tauri-port]
 
 jobs:
   build:
