@@ -38,7 +38,8 @@ jobs:
         run: cargo tauri icon assets/icon.png
 
       - name: Build installer (no updater signing)
-        run: cargo tauri build --bundles nsis --config "{\"bundle\":{\"createUpdaterArtifacts\":false}}"
+        shell: pwsh
+        run: cargo tauri build --bundles nsis --config '{"bundle":{"createUpdaterArtifacts":false}}'
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
