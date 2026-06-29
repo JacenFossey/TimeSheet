@@ -26,7 +26,10 @@ jobs:
           key: tauri-cli-v2
 
       - name: Install tauri-cli
-        run: cargo install tauri-cli --version "^2" --locked
+        shell: pwsh
+        run: |
+          if (Test-Path "$HOME/.cargo/bin/cargo-tauri.exe") { Write-Host "tauri-cli restored from cache" }
+          else { cargo install tauri-cli --version "^2" --locked }
 
       # generate_context!/build.rs embed the window icon, so the icons must exist
       # before compiling. Generated from assets/icon.png; never committed.

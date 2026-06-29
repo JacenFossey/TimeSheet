@@ -29,7 +29,10 @@ jobs:
           key: tauri-cli-v2
 
       - name: Install tauri-cli
-        run: cargo install tauri-cli --version "^2" --locked
+        shell: pwsh
+        run: |
+          if (Test-Path "$HOME/.cargo/bin/cargo-tauri.exe") { Write-Host "tauri-cli restored from cache" }
+          else { cargo install tauri-cli --version "^2" --locked }
 
       - name: Generate icons
         run: cargo tauri icon assets/icon.png
