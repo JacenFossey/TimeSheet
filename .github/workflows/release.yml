@@ -14,21 +14,36 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-          cache: 'npm'
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache electron-builder
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Cache tauri-cli
         uses: actions/cache@v5
         with:
-          path: ~\AppData\Local\electron-builder\Cache
-          key: ebuilder-${{ hashFiles('package-lock.json') }}
+          path: ~/.cargo/bin/cargo-tauri.exe
+          key: tauri-cli-v2
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install tauri-cli
+        run: cargo install tauri-cli --version "^2" --locked
+
+      - name: Generate icons
+        run: cargo tauri icon assets/icon.png
 
       - name: Build & publish release
+        uses: tauri-apps/tauri-action@v0
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run dist -- --publish always
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: src-tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: Timesheet ${{ github.ref_name }}
+          releaseDraft: false
+          prerelease: false
+          # Publishes the NSIS installer + signed latest.json for the updater.
+          includeUpdaterJson: true

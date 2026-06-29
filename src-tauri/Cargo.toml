@@ -1,0 +1,23 @@
+[package]
+name = "timesheet"
+version = "1.7.3"
+description = "Daily Timesheet"
+authors = ["Jacen Fossey"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+tauri-plugin-single-instance = "2"
+serde_json = "1"
+chrono = "0.4"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true

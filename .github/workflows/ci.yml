@@ -1,0 +1,37 @@
+name: CI (compile check)
+
+# Runs on every branch push (not tags — tags go to release.yml). Use this to
+# shake out Rust API errors from the logs without publishing anything.
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Cache tauri-cli
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/bin/cargo-tauri.exe
+          key: tauri-cli-v2
+
+      - name: Install tauri-cli
+        run: cargo install tauri-cli --version "^2" --locked
+
+      # generate_context!/build.rs embed the window icon, so the icons must exist
+      # before compiling. Generated from assets/icon.png; never committed.
+      - name: Generate icons
+        run: cargo tauri icon assets/icon.png
+
+      - name: Compile check
+        run: cargo check --manifest-path src-tauri/Cargo.toml
