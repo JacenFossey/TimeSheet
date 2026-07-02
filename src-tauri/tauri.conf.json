@@ -36,7 +36,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "REPLACE_WITH_TAURI_SIGNER_PUBLIC_KEY",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDRFQTBDNzJDQTU3OEFFMzEKUldReHJuaWxMTWVnVGxMSjRaV3RJd2hCSkQyWXJNNU9IaEhFS0plM1dVaGNHY0xMRkwrQS85U3IK",
       "endpoints": [
         "https://github.com/JacenFossey/TimeSheet/releases/latest/download/latest.json"
       ]
