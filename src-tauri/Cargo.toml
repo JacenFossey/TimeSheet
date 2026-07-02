@@ -1,6 +1,6 @@
 [package]
 name = "timesheet"
-version = "1.7.3"
+version = "1.8.0"
 description = "Daily Timesheet"
 authors = ["Jacen Fossey"]
 edition = "2021"
