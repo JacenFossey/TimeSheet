@@ -1,6 +1,6 @@
 # Timesheet
 
-A local desktop timesheet app built with Electron and SQLite.
+A local desktop timesheet app built with Tauri v2 (native WebView2).
 
 ## Features
 
@@ -9,15 +9,19 @@ A local desktop timesheet app built with Electron and SQLite.
 - 15-minute popup reminders to log what you just did
 - Stats dashboard (week / month / 3M / 6M / year / all-time)
 - CSV and JSON export with custom date ranges
-- Data stored locally in a SQLite database (`%AppData%\Timesheet\timesheet.db`)
+- Data stored locally as one JSON file per day under `%AppData%\Timesheet\days`
+- Auto-updates from GitHub releases
 
-## Setup
+## Development
 
-Requires [Node.js](https://nodejs.org) (v18+).
+Requires [Rust](https://rustup.rs) and the tauri CLI (`cargo install tauri-cli`).
 
 ```
-npm install
-npm start
+cargo tauri dev
 ```
 
-> `npm install` will automatically rebuild `better-sqlite3` against Electron's ABI via `@electron/rebuild`.
+## Release
+
+Bump `version` in `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, then
+push a matching `v*` tag — `.github/workflows/release.yml` builds the NSIS
+installer, signs the updater artifacts, and publishes the GitHub release.

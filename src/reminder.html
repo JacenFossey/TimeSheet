@@ -168,6 +168,7 @@
 
 <div class="cat-picker" id="catPicker"></div>
 
+<script src="ts.js"></script>
 <script>
 let slotKey      = null;
 let selectedCat  = 'none';
@@ -176,21 +177,55 @@ let CAT_MAP      = {};
 let countdown    = 120;
 let countdownInt = null;
 
-// Receive data from main
-window.ts.onReminderData(async ({ slotKey: sk, slotLabel, plannedData, nextLabel, nextData }) => {
-  slotKey = sk;
-  document.getElementById('slotTimeLabel').textContent = slotLabel;
+const appWin = window.__TAURI__.window.getCurrentWindow();
+const { LogicalSize, LogicalPosition } = window.__TAURI__.dpi;
+
+// Which 15-min block just finished — derived from the clock, same maths the old
+// main process used in fireReminder().
+function minutesToKey(m) {
+  return `${String(Math.floor(m / 60)).padStart(2,'0')}:${String(m % 60).padStart(2,'0')}`;
+}
+function slotInfoAt(min) {
+  if (min < 0) return null;
+  const h = Math.floor(min / 60), m = min % 60;
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return { key: minutesToKey(min), label: `${h12}:${String(m).padStart(2,'0')} ${h < 12 ? 'AM' : 'PM'}` };
+}
+// "7:00 – 7:15 AM" — collapse the meridiem when start and end share it.
+function blockLabel(startMin, endMin) {
+  const a = slotInfoAt(startMin), b = slotInfoAt(endMin);
+  if (!a) return '';
+  if (!b) return a.label;
+  const sameMeridiem = a.label.slice(-2) === b.label.slice(-2);
+  return `${sameMeridiem ? a.label.slice(0, -3) : a.label} – ${b.label}`;
+}
+function todayString() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+async function init() {
+  const now    = new Date();
+  const curMin = Math.floor((now.getHours() * 60 + now.getMinutes()) / 15) * 15;
+  const slot   = slotInfoAt(curMin - 15);
+  if (!slot) { window.ts.dismissReminder(); return; }
+  const next   = slotInfoAt(curMin);
+  slotKey = slot.key;
+  document.getElementById('slotTimeLabel').textContent = blockLabel(curMin - 15, curMin);
 
   CATEGORIES = await window.ts.loadCategories();
   CAT_MAP    = Object.fromEntries(CATEGORIES.map(c => [c.id, c]));
   buildPicker();
+
+  const dayData     = await window.ts.loadDay(todayString());
+  const plannedData = (dayData[slotKey] && dayData[slotKey].planned) || null;
+  const nextData    = (next && dayData[next.key] && dayData[next.key].planned) || null;
 
   if (plannedData) {
     document.getElementById('plannedRow').style.display = 'flex';
     const pCat = CAT_MAP[plannedData.cat];
     document.getElementById('plannedText').textContent =
       (pCat && pCat.id !== 'none' ? `[${pCat.label}] ` : '') + (plannedData.text || '');
-    // Pre-select planned category
     if (plannedData.cat && plannedData.cat !== 'none') setCategory(plannedData.cat);
     if (plannedData.text) document.getElementById('actualInput').value = plannedData.text;
   }
@@ -199,24 +234,32 @@ window.ts.onReminderData(async ({ slotKey: sk, slotLabel, plannedData, nextLabel
   if (nextData && (nextData.text || (nextData.cat && nextData.cat !== 'none'))) {
     document.getElementById('nextRow').style.display = 'flex';
     const nCat = CAT_MAP[nextData.cat];
-    const timePrefix = nextLabel ? `${nextLabel} — ` : '';
+    const timePrefix = next ? `${blockLabel(curMin, curMin + 15)} — ` : '';
     document.getElementById('nextText').textContent =
       timePrefix + (nCat && nCat.id !== 'none' ? `[${nCat.label}] ` : '') + (nextData.text || '');
   }
 
-  // Select all text so user can just start typing
   const inp = document.getElementById('actualInput');
   inp.focus(); inp.select();
 
   startCountdown();
+  placeAndShow();
+}
 
-  // Fit the window to its content so the footer (Skip/Save) is never clipped —
-  // long planned/next text can wrap and overflow the default height.
-  requestAnimationFrame(() => {
-    const h = document.body.scrollHeight;
-    if (h > window.innerHeight) window.ts.resizeReminder(Math.ceil(h));
-  });
-});
+// Size to fit content (so the Skip/Save footer is never clipped) and anchor to
+// the bottom-right of the work area, then reveal. screen.avail* excludes the
+// taskbar — the Tauri equivalent of Electron's workAreaSize.
+// ponytail: uses the monitor the window was created on (primary).
+async function placeAndShow() {
+  await new Promise(r => requestAnimationFrame(r));
+  const W = 360;
+  const H = Math.min(Math.ceil(document.body.scrollHeight), screen.availHeight - 32);
+  await appWin.setSize(new LogicalSize(W, H));
+  await appWin.setPosition(new LogicalPosition(screen.availWidth - W - 16, screen.availHeight - H - 16));
+  await appWin.show();
+}
+
+init();
 
 function startCountdown() {
   const fill = document.getElementById('countdown');

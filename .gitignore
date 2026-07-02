@@ -1,6 +1,9 @@
 node_modules/
 dist/
 out/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/icons/
 *.log
 npm-debug.log*
 .DS_Store

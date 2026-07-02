@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permissions for the main and reminder windows. App-defined commands (load_day, save_day, export_csv, …) are always allowed and need no entry here; this list only grants the core window/event calls the frontend makes directly.",
+  "windows": ["main", "reminder"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-close",
+    "core:window:allow-set-size",
+    "core:window:allow-set-position",
+    "core:window:allow-set-focus",
+    "core:window:allow-current-monitor"
+  ]
+}
