@@ -211,6 +211,9 @@
   .cat-add-row input[type="text"]:focus { border-color: var(--accent); }
   .cat-add-btn { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
   .cat-add-btn:hover { opacity: .85; }
+  .cat-payoff-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text-muted); border-radius: 6px; padding: 3px 7px; font-size: 10px; font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+  .cat-payoff-btn.high { color: #22c55e; border-color: #22c55e; }
+  .cat-payoff-btn.low { color: #ef4444; border-color: #ef4444; }
 
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -958,10 +961,22 @@ function renderCatModalList() {
     const item = document.createElement('div');
     item.className = 'cat-list-item';
     const isProtected = cat.id === 'none';
-    item.innerHTML = `<span class="cat-list-swatch" style="background:${cat.color}"></span><span class="cat-list-name">${cat.label}</span><button class="cat-delete-btn" title="Delete" ${isProtected?'disabled':''}>✕</button>`;
-    if (!isProtected) item.querySelector('.cat-delete-btn').addEventListener('click', () => deleteCategory(cat.id));
+    const payoffLabel = cat.payoff === 'high' ? '▲ High' : cat.payoff === 'low' ? '▼ Low' : '— Payoff';
+    const payoffBtn = isProtected ? '' : `<button class="cat-payoff-btn ${cat.payoff||''}" title="Payoff — click to change">${payoffLabel}</button>`;
+    item.innerHTML = `<span class="cat-list-swatch" style="background:${cat.color}"></span><span class="cat-list-name">${cat.label}</span>${payoffBtn}<button class="cat-delete-btn" title="Delete" ${isProtected?'disabled':''}>✕</button>`;
+    if (!isProtected) {
+      item.querySelector('.cat-payoff-btn').addEventListener('click', () => cyclePayoff(cat.id));
+      item.querySelector('.cat-delete-btn').addEventListener('click', () => deleteCategory(cat.id));
+    }
     list.appendChild(item);
   });
+}
+
+async function cyclePayoff(id) {
+  const cat = CAT_MAP[id]; if (!cat) return;
+  cat.payoff = cat.payoff === 'high' ? 'low' : cat.payoff === 'low' ? undefined : 'high';
+  await window.ts.saveCategories(CATEGORIES);
+  renderCatModalList();
 }
 
 async function deleteCategory(id) {
@@ -1099,6 +1114,14 @@ async function renderStats(period) {
     trendHtml = `<div class="sc-trend ${cls}">${arrow} ${Math.abs(pct)}% vs prev</div>`;
   }
 
+  // Payoff balance (actual hours in high- vs low-payoff categories)
+  let highSlots = 0, lowSlots = 0;
+  Object.entries(catCounts).forEach(([id, c]) => {
+    const p = CAT_MAP[id] && CAT_MAP[id].payoff;
+    if (p === 'high') highSlots += c; else if (p === 'low') lowSlots += c;
+  });
+  const highHours = highSlots * 0.25, lowHours = lowSlots * 0.25;
+
   // KPI cards
   document.getElementById('statsKpi').innerHTML = `
     <div class="stat-card"><div class="sc-label">Total Hours</div><div class="sc-value">${totalHours.toFixed(1)}</div><div class="sc-sub">${totalDays} active day${totalDays!==1?'s':''}</div>${trendHtml}</div>
@@ -1107,6 +1130,7 @@ async function renderStats(period) {
     <div class="stat-card"><div class="sc-label">Plan Adherence</div><div class="sc-value">${adherence===null?'—':adherence+'%'}</div><div class="sc-sub">${adherence===null?'no plans set':'actual matched plan'}</div></div>
     <div class="stat-card"><div class="sc-label">Best Weekday</div><div class="sc-value" style="font-size:18px">${bestWd===null?'—':WD[bestWd]}</div><div class="sc-sub">${bestWd===null?'&nbsp;':bestWdAvg.toFixed(1)+'h avg'}</div></div>
     <div class="stat-card"><div class="sc-label">Top Category</div><div class="sc-value" style="font-size:16px">${topCat ? topCat.label : '—'}</div><div class="sc-sub">${topCatId ? (topCatId[1]*0.25).toFixed(1)+'h' : ''}</div></div>
+    <div class="stat-card"><div class="sc-label">Payoff</div><div class="sc-value" style="font-size:18px"><span style="color:#22c55e">${highHours.toFixed(1)}h</span> / <span style="color:#ef4444">${lowHours.toFixed(1)}h</span></div><div class="sc-sub">high vs low payoff</div></div>
   `;
 
   // Bar chart
@@ -1180,7 +1204,7 @@ async function renderStats(period) {
       <td>
         <div style="display:flex;align-items:center;gap:6px">
           <span class="dot" style="background:${cat.color};width:10px;height:10px;flex-shrink:0"></span>
-          <span>${cat.label}</span>
+          <span>${cat.label}${cat.payoff==='high'?' <span style="color:#22c55e">▲</span>':cat.payoff==='low'?' <span style="color:#ef4444">▼</span>':''}</span>
         </div>
         <div class="ct-bar" style="background:${cat.color};width:${pct}%"></div>
       </td>
