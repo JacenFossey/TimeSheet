@@ -141,6 +141,7 @@
   .slot:focus-within { border-color: var(--accent); background: var(--surface2); }
   .cat-btn { width: 12px; height: 12px; border-radius: 50%; border: none; cursor: pointer; flex-shrink: 0; transition: transform .1s, opacity .15s; opacity: .85; }
   .cat-btn:hover { transform: scale(1.25); opacity: 1; }
+  .cat-btn.multi-selected { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); opacity: 1; }
   .slot-text { flex: 1; background: transparent; border: none; outline: none; color: var(--text); font-size: 12px; font-family: inherit; min-width: 0; line-height: 1.3; }
   .slot-text::placeholder { color: var(--text-muted); opacity: .5; }
 
@@ -541,6 +542,9 @@ const TOTAL_SLOTS = SLOTS.length;
 // ── State ────────────────────────────────────────────────────────────────────
 let currentDate = todayString();
 let pickerTarget = null;
+let pickerMulti = false;
+let multiSel = new Set();   // "slotKey|side" keys selected for bulk category change
+let lastClicked = null;     // anchor for shift-click range
 let activeFilter = null;
 let CATEGORIES = [];
 let CAT_MAP = {};
@@ -780,10 +784,11 @@ async function buildTable() {
 
       const catBtn = document.createElement('button');
       catBtn.className = 'cat-btn';
+      catBtn.dataset.selKey = `${slot.key}|${side}`;
       const cat = CAT_MAP[saved.cat] || CAT_MAP['none'];
       catBtn.style.background = cat.color;
       catBtn.title = cat.label;
-      catBtn.addEventListener('click', e => openPicker(e, slot.key, side, catBtn));
+      catBtn.addEventListener('click', e => onCatBtnClick(e, slot.key, side, catBtn));
 
       const textInput = document.createElement('input');
       textInput.type  = 'text';
@@ -863,13 +868,47 @@ function buildPicker() {
   });
 }
 
-function openPicker(e, slotKey, side, btnEl) {
+// ── Multi-select (ctrl/⌘-click toggles, shift-click ranges within a side) ───────
+function refreshMultiHighlight() {
+  document.querySelectorAll('#timesheetBody .cat-btn').forEach(btn =>
+    btn.classList.toggle('multi-selected', multiSel.has(btn.dataset.selKey)));
+}
+function clearSel() { multiSel.clear(); lastClicked = null; refreshMultiHighlight(); }
+function toggleSel(key) {
+  if (multiSel.has(key)) multiSel.delete(key); else multiSel.add(key);
+  refreshMultiHighlight();
+}
+function selectRange(fromKey, toKey) {
+  const [fk, fside] = fromKey.split('|'), [tk, tside] = toKey.split('|');
+  if (fside !== tside) { toggleSel(toKey); return; }  // range only makes sense within one side
+  let a = SLOTS.findIndex(s => s.key === fk), b = SLOTS.findIndex(s => s.key === tk);
+  if (a < 0 || b < 0) return;
+  if (a > b) [a, b] = [b, a];
+  for (let i = a; i <= b; i++) multiSel.add(`${SLOTS[i].key}|${fside}`);
+  refreshMultiHighlight();
+}
+
+function onCatBtnClick(e, slotKey, side, btnEl) {
   e.stopPropagation();
+  const key = `${slotKey}|${side}`;
+  if (e.ctrlKey || e.metaKey) { toggleSel(key); lastClicked = key; return; }
+  if (e.shiftKey && lastClicked) { selectRange(lastClicked, key); return; }
+  if (multiSel.size && multiSel.has(key)) { openPicker(e, slotKey, side, btnEl, true); return; }
+  clearSel();
+  lastClicked = key;
+  openPicker(e, slotKey, side, btnEl, false);
+}
+
+function openPicker(e, slotKey, side, btnEl, multi) {
+  e.stopPropagation();
+  pickerMulti = !!multi;
   const picker = document.getElementById('catPicker');
+  const title = picker.querySelector('.cat-picker-title');
+  if (title) title.textContent = pickerMulti ? `Set category · ${multiSel.size} entries` : 'Category';
   loadDay(currentDate).then(data => {
     const current = (data[slotKey] && data[slotKey][side] && data[slotKey][side].cat) || 'none';
     picker.querySelectorAll('.cat-opt').forEach(opt =>
-      opt.classList.toggle('selected', opt.dataset.catId === current));
+      opt.classList.toggle('selected', !pickerMulti && opt.dataset.catId === current));
   });
   pickerTarget = { slotKey, side, btnEl };
   const rect = btnEl.getBoundingClientRect();
@@ -882,6 +921,7 @@ function openPicker(e, slotKey, side, btnEl) {
 }
 
 function selectCategory(catId) {
+  if (pickerMulti && multiSel.size) { applyCategoryToSelection(catId); closePicker(); return; }
   if (!pickerTarget) return;
   const { slotKey, side, btnEl } = pickerTarget;
   setSlot(currentDate, slotKey, side, 'cat', catId);
@@ -891,9 +931,26 @@ function selectCategory(catId) {
   if (activeFilter) applyFilter();
 }
 
+async function applyCategoryToSelection(catId) {
+  const data = await loadDay(currentDate);
+  multiSel.forEach(key => {
+    const [slotKey, side] = key.split('|');
+    if (!data[slotKey]) data[slotKey] = {};
+    if (!data[slotKey][side]) data[slotKey][side] = { cat: 'none', text: '' };
+    data[slotKey][side].cat = catId;
+    const btn = document.querySelector(`tr[data-slot-key="${slotKey}"] .col-${side} .cat-btn`);
+    if (btn) { btn.style.background = CAT_MAP[catId].color; btn.title = CAT_MAP[catId].label; }
+  });
+  await saveDay(currentDate, data);
+  drawChart(); drawWeekly();
+  clearSel();
+  if (activeFilter) applyFilter();
+}
+
 function closePicker() {
   document.getElementById('catPicker').classList.remove('open');
   pickerTarget = null;
+  pickerMulti = false;
 }
 
 document.addEventListener('click', e => {
@@ -924,6 +981,7 @@ function onDateChange() {
   document.getElementById('dateInput').value = currentDate;
   document.title = `Timesheet — ${formatDateLabel(currentDate)}`;
   activeFilter = null;
+  clearSel();
   document.querySelectorAll('.legend-item').forEach(el => el.classList.remove('active-filter'));
   buildTable();
   drawChart();
@@ -947,7 +1005,7 @@ document.addEventListener('keydown', e => {
     if (e.key === 'ArrowLeft')  { e.preventDefault(); shiftDate(-1); }
     if (e.key === 'ArrowRight') { e.preventDefault(); shiftDate(1); }
   }
-  if (e.key === 'Escape') closePicker();
+  if (e.key === 'Escape') { closePicker(); clearSel(); }
 });
 
 // ── Category manager modal ────────────────────────────────────────────────────
