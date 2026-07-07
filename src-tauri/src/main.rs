@@ -29,6 +29,9 @@ fn days_dir() -> PathBuf {
 fn cats_file() -> PathBuf {
     base_dir().join("categories.json")
 }
+fn email_cfg_file() -> PathBuf {
+    base_dir().join("email.json")
+}
 
 fn read_day(date: &str) -> Value {
     fs::read_to_string(days_dir().join(format!("{date}.json")))
@@ -205,6 +208,153 @@ fn export_json(app: AppHandle, from: String, to: String) -> Value {
     json!({ "filePath": path.to_string_lossy() })
 }
 
+// ── Email (SendGrid SMTP) ─────────────────────────────────────────────────────
+// From/To live in email.json; the API key lives in Windows Credential Manager
+// (keyring), never on disk in cleartext. The email body is the day's *actual*
+// entries as an HTML table — a manager-facing report, no attachment.
+
+fn keyring_entry() -> Result<keyring::Entry, String> {
+    keyring::Entry::new("Timesheet", "sendgrid").map_err(|e| e.to_string())
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
+fn cat_labels() -> std::collections::HashMap<String, String> {
+    let mut m = std::collections::HashMap::new();
+    if let Some(arr) = load_categories().as_array() {
+        for c in arr {
+            if let (Some(id), Some(label)) = (
+                c.get("id").and_then(|v| v.as_str()),
+                c.get("label").and_then(|v| v.as_str()),
+            ) {
+                m.insert(id.to_string(), label.to_string());
+            }
+        }
+    }
+    m
+}
+
+fn day_to_html(date: &str, day: &Value) -> String {
+    let labels = cat_labels();
+    let mut rows = String::new();
+    // serde_json Map is a BTreeMap here (no preserve_order feature), so "HH:MM"
+    // slot keys iterate in chronological order — same assumption as export_csv.
+    if let Some(slots) = day.as_object() {
+        for (slot, sides) in slots {
+            let actual = sides.get("actual");
+            let cat = actual
+                .and_then(|a| a.get("cat"))
+                .and_then(|c| c.as_str())
+                .unwrap_or("none");
+            let text = actual
+                .and_then(|a| a.get("text"))
+                .and_then(|t| t.as_str())
+                .unwrap_or("");
+            if cat == "none" && text.is_empty() {
+                continue;
+            }
+            let cat_label = labels.get(cat).map(|s| s.as_str()).unwrap_or(cat);
+            let td = "padding:4px 10px;border-bottom:1px solid #eee;";
+            rows.push_str(&format!(
+                "<tr><td style=\"{td}\">{}</td><td style=\"{td}\">{}</td><td style=\"{td}\">{}</td></tr>",
+                html_escape(slot),
+                html_escape(cat_label),
+                html_escape(text)
+            ));
+        }
+    }
+    if rows.is_empty() {
+        rows.push_str("<tr><td colspan=\"3\" style=\"padding:10px;color:#888;\">No entries recorded.</td></tr>");
+    }
+    let th = "text-align:left;padding:4px 10px;border-bottom:2px solid #333;";
+    format!(
+        "<div style=\"font-family:Arial,sans-serif;font-size:14px;color:#222;\">\
+         <h2 style=\"margin:0 0 12px;\">Timesheet — {}</h2>\
+         <table style=\"border-collapse:collapse;width:100%;max-width:520px;\">\
+         <thead><tr><th style=\"{th}\">Time</th><th style=\"{th}\">Category</th><th style=\"{th}\">Notes</th></tr></thead>\
+         <tbody>{}</tbody></table></div>",
+        html_escape(date),
+        rows
+    )
+}
+
+#[tauri::command]
+fn load_email_settings() -> Value {
+    let mut v = fs::read_to_string(email_cfg_file())
+        .ok()
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .unwrap_or_else(|| json!({}));
+    // Report whether a key is stored, but never hand the key back to the UI.
+    let has_key = keyring_entry()
+        .and_then(|e| e.get_password().map_err(|e| e.to_string()))
+        .is_ok();
+    if let Some(o) = v.as_object_mut() {
+        o.insert("hasKey".to_string(), json!(has_key));
+    }
+    v
+}
+
+#[tauri::command]
+fn save_email_settings(from: String, to: String, api_key: String) -> Result<(), String> {
+    fs::write(email_cfg_file(), json!({ "from": from, "to": to }).to_string())
+        .map_err(|e| e.to_string())?;
+    // Empty api_key means "keep the existing key" — lets the user edit addresses
+    // without re-typing the secret.
+    if !api_key.is_empty() {
+        keyring_entry()?
+            .set_password(&api_key)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn send_email_blocking(date: &str) -> Result<String, String> {
+    use lettre::message::header::ContentType;
+    use lettre::transport::smtp::authentication::Credentials;
+    use lettre::{Message, SmtpTransport, Transport};
+
+    let cfg = fs::read_to_string(email_cfg_file())
+        .ok()
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .ok_or("Email not configured — set From, To and API key first.")?;
+    let from = cfg.get("from").and_then(|v| v.as_str()).unwrap_or("");
+    let to = cfg.get("to").and_then(|v| v.as_str()).unwrap_or("");
+    if from.is_empty() || to.is_empty() {
+        return Err("From and To addresses are required.".to_string());
+    }
+    let api_key = keyring_entry()?
+        .get_password()
+        .map_err(|_| "No SendGrid API key stored. Save one in Settings.".to_string())?;
+
+    let day = read_day(date);
+    let email = Message::builder()
+        .from(from.parse().map_err(|e| format!("Bad From address: {e}"))?)
+        .to(to.parse().map_err(|e| format!("Bad To address: {e}"))?)
+        .subject(format!("Timesheet — {date}"))
+        .header(ContentType::TEXT_HTML)
+        .body(day_to_html(date, &day))
+        .map_err(|e| e.to_string())?;
+
+    // SendGrid SMTP: username is the literal "apikey", password is the API key.
+    let creds = Credentials::new("apikey".to_string(), api_key);
+    let mailer = SmtpTransport::relay("smtp.sendgrid.net")
+        .map_err(|e| e.to_string())?
+        .credentials(creds)
+        .build();
+    mailer.send(&email).map_err(|e| e.to_string())?;
+    Ok(format!("Sent to {to}"))
+}
+
+#[tauri::command]
+async fn send_timesheet_email(date: String) -> Result<String, String> {
+    // async command → runs on the tokio pool, not the main thread, so the blocking
+    // SMTP send doesn't freeze the UI. ponytail: a rare single-user send; not worth
+    // spawn_blocking to free the worker thread.
+    send_email_blocking(&date)
+}
+
 #[tauri::command]
 fn submit_reminder(app: AppHandle, slot_key: String, cat: String, text: String) {
     let today = today_string();
@@ -313,6 +463,9 @@ fn main() {
             save_categories,
             export_csv,
             export_json,
+            load_email_settings,
+            save_email_settings,
+            send_timesheet_email,
             submit_reminder,
             check_for_updates
         ])
@@ -387,4 +540,30 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn day_to_html_renders_actuals_and_escapes() {
+        let day = json!({
+            "07:00": { "actual": { "cat": "deep", "text": "spec <review> & notes" } },
+            "07:15": { "planned": { "cat": "meetings", "text": "standup" } }, // no actual → skipped
+            "07:30": { "actual": { "cat": "none", "text": "" } }              // empty → skipped
+        });
+        let html = day_to_html("2026-07-07", &day);
+        assert!(html.contains("2026-07-07"));
+        assert!(html.contains("07:00"));
+        assert!(html.contains("spec &lt;review&gt; &amp; notes")); // escaped
+        assert!(!html.contains("standup")); // planned-only slot omitted
+        assert!(!html.contains("07:30")); // empty actual omitted
+    }
+
+    #[test]
+    fn day_to_html_handles_empty_day() {
+        let html = day_to_html("2026-07-07", &json!({}));
+        assert!(html.contains("No entries recorded."));
+    }
 }

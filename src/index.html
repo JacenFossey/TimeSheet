@@ -304,6 +304,8 @@
   .export-btn.secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
   .export-btn.secondary:hover { border-color: var(--accent); }
   .export-status { font-size: 12px; color: #22c55e; margin-top: 8px; min-height: 18px; }
+  .email-input { width: 100%; max-width: 320px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); color: var(--text); font-family: inherit; font-size: 13px; box-sizing: border-box; }
+  .email-input:focus { outline: none; border-color: var(--accent); }
 
   /* ══════════════════════════════════════════════════════════════
      SETTINGS TAB
@@ -353,6 +355,8 @@
       <input type="date" id="dateInput">
       <button id="nextDay" title="Next day">&#8250;</button>
       <button class="today-btn" id="todayBtn">Today</button>
+      <button class="today-btn" id="emailTodayBtn" title="Email today's timesheet to your manager"
+              style="background:var(--surface2) !important;color:var(--text) !important;border-color:var(--border) !important;">✉ Email</button>
     </div>
   </div>
 
@@ -470,6 +474,29 @@
         <button class="export-btn secondary" id="exportJsonBtn">Export JSON</button>
       </div>
       <div class="export-status" id="exportStatus"></div>
+    </div>
+
+    <div class="export-card">
+      <div class="export-card-title">Email to Manager</div>
+
+      <div class="export-field">
+        <label class="export-label" for="emailFrom">From (verified SendGrid sender)</label>
+        <input type="email" class="email-input" id="emailFrom" placeholder="you@company.com">
+      </div>
+      <div class="export-field">
+        <label class="export-label" for="emailTo">To (manager)</label>
+        <input type="email" class="email-input" id="emailTo" placeholder="manager@company.com">
+      </div>
+      <div class="export-field">
+        <label class="export-label" for="emailKey">SendGrid API key</label>
+        <input type="password" class="email-input" id="emailKey" placeholder="SG.…" autocomplete="off">
+      </div>
+
+      <div class="export-btns">
+        <button class="export-btn secondary" id="emailSaveBtn">Save</button>
+        <button class="export-btn" id="emailSendBtn">Email today's timesheet</button>
+      </div>
+      <div class="export-status" id="emailStatus"></div>
     </div>
   </div>
 </div>
@@ -1342,6 +1369,64 @@ function showExportStatus(msg, isErr) {
 
 document.getElementById('exportCsvBtn').addEventListener('click',  () => doExport('csv'));
 document.getElementById('exportJsonBtn').addEventListener('click', () => doExport('json'));
+
+// ── Email to Manager ────────────────────────────────────────────────────────────
+function showEmailStatus(msg, isErr) {
+  const el = document.getElementById('emailStatus');
+  el.textContent = msg;
+  el.style.color = isErr ? '#ef4444' : '#22c55e';
+  setTimeout(() => { el.textContent = ''; }, 6000);
+}
+
+(async () => {
+  const cfg = await window.ts.loadEmailSettings();
+  document.getElementById('emailFrom').value = cfg.from || '';
+  document.getElementById('emailTo').value   = cfg.to || '';
+  if (cfg.hasKey) document.getElementById('emailKey').placeholder = '•••••••• (saved — leave blank to keep)';
+})();
+
+document.getElementById('emailSaveBtn').addEventListener('click', async () => {
+  const from = document.getElementById('emailFrom').value.trim();
+  const to   = document.getElementById('emailTo').value.trim();
+  const key  = document.getElementById('emailKey').value;
+  if (!from || !to) { showEmailStatus('From and To are required.', true); return; }
+  try {
+    await window.ts.saveEmailSettings(from, to, key);
+    document.getElementById('emailKey').value = '';
+    if (key) document.getElementById('emailKey').placeholder = '•••••••• (saved — leave blank to keep)';
+    showEmailStatus('Saved.');
+  } catch (e) { showEmailStatus(String(e), true); }
+});
+
+// Send button on the main timesheet header — feedback shown in the button itself.
+document.getElementById('emailTodayBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('emailTodayBtn');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    await window.ts.sendTimesheetEmail(todayString());
+    btn.textContent = '✓ Sent';
+  } catch (e) {
+    btn.textContent = '✕ Failed';
+    btn.title = String(e); // hover for the SendGrid/config error
+  }
+  setTimeout(() => {
+    btn.textContent = orig;
+    btn.title = "Email today's timesheet to your manager";
+    btn.disabled = false;
+  }, 3000);
+});
+
+document.getElementById('emailSendBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('emailSendBtn');
+  btn.disabled = true;
+  showEmailStatus('Sending…');
+  try {
+    const msg = await window.ts.sendTimesheetEmail(todayString());
+    showEmailStatus(msg);
+  } catch (e) { showEmailStatus(String(e), true); }
+  finally { btn.disabled = false; }
+});
 
 // Initialize export date range to this week
 const { from: ewFrom, to: ewTo } = periodDates('week');
