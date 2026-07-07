@@ -18,6 +18,12 @@
     exportData: (from, to) => invoke('export_csv', { from, to }),
     exportJson: (from, to) => invoke('export_json', { from, to }),
 
+    // Email (SendGrid SMTP). loadEmailSettings returns { from, to, hasKey }.
+    loadEmailSettings: () => invoke('load_email_settings'),
+    saveEmailSettings: (from, to, apiKey) =>
+      invoke('save_email_settings', { from, to, apiKey }),
+    sendTimesheetEmail: (date) => invoke('send_timesheet_email', { date }),
+
     // Reminder window
     submitReminder: (slotKey, cat, text) =>
       invoke('submit_reminder', { slotKey, cat, text }),
