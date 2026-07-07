@@ -355,6 +355,8 @@
       <input type="date" id="dateInput">
       <button id="nextDay" title="Next day">&#8250;</button>
       <button class="today-btn" id="todayBtn">Today</button>
+      <button class="today-btn" id="emailTodayBtn" title="Email today's timesheet to your manager"
+              style="background:var(--surface2) !important;color:var(--text) !important;border-color:var(--border) !important;">✉ Email</button>
     </div>
   </div>
 
@@ -1394,6 +1396,25 @@ document.getElementById('emailSaveBtn').addEventListener('click', async () => {
     if (key) document.getElementById('emailKey').placeholder = '•••••••• (saved — leave blank to keep)';
     showEmailStatus('Saved.');
   } catch (e) { showEmailStatus(String(e), true); }
+});
+
+// Send button on the main timesheet header — feedback shown in the button itself.
+document.getElementById('emailTodayBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('emailTodayBtn');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    await window.ts.sendTimesheetEmail(todayString());
+    btn.textContent = '✓ Sent';
+  } catch (e) {
+    btn.textContent = '✕ Failed';
+    btn.title = String(e); // hover for the SendGrid/config error
+  }
+  setTimeout(() => {
+    btn.textContent = orig;
+    btn.title = "Email today's timesheet to your manager";
+    btn.disabled = false;
+  }, 3000);
 });
 
 document.getElementById('emailSendBtn').addEventListener('click', async () => {
