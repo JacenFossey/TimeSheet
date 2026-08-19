@@ -6,7 +6,7 @@
 <title>Daily Timesheet</title>
 <script>
   const _t = localStorage.getItem('theme');
-  if (_t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  if (_t !== 'dark') document.documentElement.setAttribute('data-theme', 'light');
 </script>
 <style>
   :root {
@@ -324,6 +324,49 @@
   .switch-slider::before { content: ''; position: absolute; width: 16px; height: 16px; left: 2px; top: 2px; border-radius: 50%; background: var(--text-muted); transition: transform .15s, background .15s; }
   .switch input:checked + .switch-slider { background: var(--accent); border-color: var(--accent); }
   .switch input:checked + .switch-slider::before { transform: translateX(16px); background: #fff; }
+
+  /* ── Focus view ── */
+  .focus-view { width: 100%; max-width: 920px; margin: 0 auto; padding: 22px 20px 60px; }
+  .focus-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .focus-toolbar .muted { color: var(--text-muted); font-size: 11px; margin-left: auto; }
+  .action-btn { background: var(--accent); color: #fff; border: 1px solid var(--accent); border-radius: 7px; padding: 7px 12px; font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .action-btn.secondary { background: var(--surface); color: var(--text); border-color: var(--border); }
+  .action-btn:hover { filter: brightness(1.05); }
+  .action-btn:disabled { opacity: .55; cursor: default; }
+  .focus-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .focus-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+  .focus-card-label { color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; margin-bottom: 9px; }
+  .now-title { font-size: 24px; line-height: 1.15; font-weight: 750; margin-bottom: 5px; }
+  .now-meta { color: var(--text-muted); font-size: 12px; }
+  .now-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 7px; }
+  .log-row { display: grid; grid-template-columns: 160px 1fr; gap: 8px; margin-bottom: 9px; }
+  .focus-input { width: 100%; min-width: 0; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 7px; padding: 8px 9px; font: 12px inherit; outline: none; }
+  .focus-input:focus { border-color: var(--accent); }
+  .log-actions { display: flex; align-items: center; gap: 8px; }
+  .just-time { color: var(--text-muted); font-size: 11px; margin-left: auto; }
+  .today-score { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+  .score-cell { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .score-value { font-size: 20px; font-weight: 750; }
+  .score-label { color: var(--text-muted); font-size: 10px; margin-top: 3px; }
+  .plan-list { display: flex; flex-direction: column; gap: 6px; }
+  .plan-block { display: grid; grid-template-columns: 92px 10px 170px 1fr auto; align-items: center; gap: 9px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; }
+  .plan-block.current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .plan-block.done { opacity: .68; }
+  .plan-time { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+  .plan-dot { width: 9px; height: 9px; border-radius: 50%; }
+  .plan-cat { font-size: 12px; font-weight: 650; }
+  .plan-text { color: var(--text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .plan-actual { color: var(--text-muted); font-size: 10px; white-space: nowrap; }
+  .empty-plan { text-align: center; padding: 34px 18px; color: var(--text-muted); }
+  .detail-view { display: none; }
+  .detail-view.open { display: flex; }
+  #saveStatus { font-size: 11px; color: var(--text-muted); min-width: 48px; text-align: right; }
+  @media (max-width: 760px) {
+    .focus-grid { grid-template-columns: 1fr; }
+    .today-score { grid-template-columns: 1fr; }
+    .plan-block { grid-template-columns: 82px 10px 1fr auto; }
+    .plan-text { grid-column: 3 / 5; }
+  }
 </style>
 </head>
 <body>
@@ -331,12 +374,13 @@
 <!-- ── Tab bar ── -->
 <div class="tab-bar">
   <span class="tab-bar-title">Timesheet</span>
-  <button class="tab-btn active" data-tab="timesheet">Daily Log</button>
-  <button class="tab-btn" data-tab="stats">Stats</button>
+  <button class="tab-btn active" data-tab="timesheet">Plan & Track</button>
+  <button class="tab-btn" data-tab="stats">Weekly Report</button>
   <button class="tab-btn" data-tab="export">Export</button>
   <button class="tab-btn" data-tab="settings">Settings</button>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="updateStatusText" style="font-size:11px;color:var(--text-muted)"></span>
+    <span id="saveStatus"></span>
     <button id="checkUpdateBtn" class="legend-manage-btn">Check for updates</button>
     <button id="themeBtn" class="legend-manage-btn" title="Toggle light/dark mode">☀</button>
   </div>
@@ -348,7 +392,7 @@
 <div class="tab-panel active" id="tab-timesheet">
 
   <div class="ts-header">
-    <span style="font-weight:600;font-size:14px">Daily Log</span>
+    <span style="font-weight:600;font-size:14px">Plan & Track</span>
     <div class="date-nav">
       <button id="prevDay" title="Previous day">&#8249;</button>
       <span id="dateLabel"></span>
@@ -360,10 +404,38 @@
     </div>
   </div>
 
-  <div class="legend" id="legend"></div>
-
   <div class="ts-scroll">
-    <div class="page-body">
+    <section class="focus-view" id="focusView">
+      <div class="focus-toolbar">
+        <button class="action-btn" id="applyTemplateBtn">Apply standard plan</button>
+        <button class="action-btn secondary" id="copyYesterdayBtn">Copy yesterday</button>
+        <button class="action-btn secondary" id="toggleDetailsBtn">Edit details</button>
+        <span class="muted" id="dayTheme"></span>
+      </div>
+      <div class="focus-grid">
+        <div class="focus-card" id="nowCard"></div>
+        <div class="focus-card">
+          <div class="focus-card-label">Just finished</div>
+          <div class="log-row">
+            <select class="focus-input" id="quickCat"></select>
+            <input class="focus-input" id="quickText" maxlength="120" placeholder="Optional note…">
+          </div>
+          <div class="log-actions">
+            <button class="action-btn" id="sameAsPlanBtn">Same as planned</button>
+            <button class="action-btn secondary" id="quickSaveBtn">Save</button>
+            <span class="just-time" id="justFinishedTime"></span>
+          </div>
+        </div>
+      </div>
+      <div class="today-score" id="todayScore"></div>
+      <div class="focus-card">
+        <div class="focus-card-label">Today's plan</div>
+        <div class="plan-list" id="planList"></div>
+      </div>
+    </section>
+
+    <div class="legend detail-view" id="legend"></div>
+    <div class="page-body detail-view" id="detailView">
       <div class="left-col">
         <table id="timesheetTable">
           <thead>
@@ -565,6 +637,38 @@ for (let m = START_MIN; m < END_MIN; m += STEP) {
   SLOTS.push({ key: minutesToKey(m), label: minutesToLabel(m), minutes: m });
 }
 const TOTAL_SLOTS = SLOTS.length;
+const SALES_CATS = new Set(['ontario_sales', 'montreal_sales']);
+const RECOMMENDED_CATEGORIES = [
+  { id: 'none', label: 'None', color: '#94a3b8' },
+  { id: 'ontario_sales', label: 'Ontario Sales', color: '#2563eb', payoff: 'high' },
+  { id: 'montreal_sales', label: 'Montreal Sales', color: '#7c3aed', payoff: 'high' },
+  { id: 'quotes_followup', label: 'Quotes / Follow-up', color: '#0891b2', payoff: 'high' },
+  { id: 'meetings', label: 'Meetings', color: '#a855f7' },
+  { id: 'admin', label: 'Admin', color: '#f97316' },
+  { id: 'break', label: 'Lunch / Break', color: '#22c55e' },
+  { id: 'karl_vmi', label: 'Karl / VMI', color: '#d97706' },
+  { id: 'workflow', label: 'Workflow Improvements', color: '#64748b', payoff: 'low' },
+];
+
+function standardPlanFor(dateStr) {
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const dow = new Date(y, m - 1, d).getDay();
+  if (dow === 0 || dow === 6) return { theme: 'Weekend', blocks: [] };
+  const sales = dow === 3 ? 'montreal_sales' : 'ontario_sales';
+  const theme = dow === 3 ? 'Montreal / Flex day' : 'Ontario sales day';
+  return { theme, blocks: [
+    ['07:00','07:30','admin','Priorities and urgent follow-ups'],
+    ['07:30','08:00','meetings','Morning meeting'],
+    ['08:00','10:00',sales,'Call block 1'],
+    ['10:00','10:15','admin','Log and reset'],
+    ['10:15','12:00',sales,'Call block 2'],
+    ['12:00','13:00','break','Lunch'],
+    ['13:00','14:30',sales,'Call block 3'],
+    ['14:30','15:30','quotes_followup','Quotes and follow-ups'],
+    ['15:30','16:00',dow === 3 ? 'karl_vmi' : 'admin',dow === 3 ? 'Flex / VMI / catch-up' : 'Flex, admin, and tomorrow prep'],
+    ['16:00','16:30','meetings','EOD meeting and wrap-up'],
+  ]};
+}
 
 // ── State ────────────────────────────────────────────────────────────────────
 let currentDate = todayString();
@@ -576,6 +680,8 @@ let activeFilter = null;
 let CATEGORIES = [];
 let CAT_MAP = {};
 let dayCache = null; // cache for currentDate; null = invalid
+let saveQueue = Promise.resolve();
+const pendingSlotSaves = new Map();
 
 // ── Settings (renderer prefs, persisted in localStorage) ───────────────────────
 const DEFAULT_SETTINGS = { showNowLine: true };
@@ -605,17 +711,70 @@ async function loadDay(date) {
 }
 async function saveDay(date, data) {
   if (date === currentDate) dayCache = data;
-  await window.ts.saveDay(date, data);
+  const snapshot = JSON.parse(JSON.stringify(data));
+  return queueWrite(() => window.ts.saveDay(date, snapshot));
+}
+async function saveSlotField(date, slotKey, side, field, value) {
+  return queueWrite(() => window.ts.saveSlot(date, slotKey, side, field, String(value)));
+}
+async function queueWrite(operation) {
+  const status = document.getElementById('saveStatus');
+  status.textContent = 'Saving…';
+  saveQueue = saveQueue.catch(() => {}).then(operation);
+  try {
+    await saveQueue;
+    status.style.color = 'var(--text-muted)';
+    status.title = '';
+    status.textContent = 'Saved';
+    setTimeout(() => { if (status.textContent === 'Saved') status.textContent = ''; }, 1200);
+  } catch (e) {
+    status.textContent = 'Save failed';
+    status.style.color = '#ef4444';
+    throw e;
+  }
 }
 async function setSlot(date, slotKey, side, field, value) {
   const data = await loadDay(date);
   if (!data[slotKey]) data[slotKey] = {};
   if (!data[slotKey][side]) data[slotKey][side] = { cat: 'none', text: '' };
   data[slotKey][side][field] = value;
-  await saveDay(date, data);
-  drawChart();
-  drawWeekly();
+  try {
+    await saveSlotField(date, slotKey, side, field, value);
+    if (date === currentDate) {
+      drawChart();
+      drawWeekly();
+      renderFocus(data);
+    }
+  } catch (e) { showStorageError(e); }
 }
+function setSlotDebounced(date, slotKey, side, field, value) {
+  const data = dayCache || {};
+  if (!data[slotKey]) data[slotKey] = {};
+  if (!data[slotKey][side]) data[slotKey][side] = { cat: 'none', text: '' };
+  data[slotKey][side][field] = value;
+  if (date === currentDate) dayCache = data;
+  const timerKey = `${date}|${slotKey}|${side}|${field}`;
+  clearTimeout(pendingSlotSaves.get(timerKey));
+  pendingSlotSaves.set(timerKey, setTimeout(async () => {
+    pendingSlotSaves.delete(timerKey);
+    try {
+      await saveSlotField(date, slotKey, side, field, value);
+      if (date === currentDate) { drawChart(); drawWeekly(); renderFocus(data); }
+    } catch (e) { showStorageError(e); }
+  }, 300));
+}
+function showStorageError(error) {
+  const message = String(error || 'Unknown storage error');
+  console.error(message);
+  const status = document.getElementById('saveStatus');
+  status.textContent = 'Storage error';
+  status.style.color = '#ef4444';
+  status.title = message;
+}
+window.addEventListener('unhandledrejection', event => {
+  showStorageError(event.reason);
+  event.preventDefault();
+});
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -637,7 +796,7 @@ function buildLegend() {
     const item = document.createElement('div');
     item.className = 'legend-item';
     item.dataset.cat = cat.id;
-    item.innerHTML = `<span class="dot" style="background:${cat.color}"></span>${cat.label}`;
+    item.innerHTML = `<span class="dot" style="background:${cat.color}"></span>${escapeHtml(cat.label)}`;
     item.addEventListener('click', () => toggleFilter(cat.id));
     el.appendChild(item);
   });
@@ -726,7 +885,7 @@ function drawDonut(svgEl, legendEl, counts, total, showHrs) {
       const cat = CAT_MAP[catId]; if (!cat) return;
       const row = document.createElement('div');
       row.className = 'chart-legend-row';
-      row.innerHTML = `<span class="dot" style="background:${cat.color}"></span><span class="cl-label">${cat.label}</span><span class="cl-val">${(count*0.25).toFixed(2)}h</span>`;
+      row.innerHTML = `<span class="dot" style="background:${cat.color}"></span><span class="cl-label">${escapeHtml(cat.label)}</span><span class="cl-val">${(count*0.25).toFixed(2)}h</span>`;
       legendEl.appendChild(row);
     });
   }
@@ -789,7 +948,9 @@ async function drawWeekly() {
 async function buildTable() {
   const tbody = document.getElementById('timesheetBody');
   tbody.innerHTML = '';
-  const data = await loadDay(currentDate);
+  const tableDate = currentDate;
+  const data = await loadDay(tableDate);
+  if (tableDate !== currentDate) return;
 
   SLOTS.forEach(slot => {
     const tr = document.createElement('tr');
@@ -823,7 +984,7 @@ async function buildTable() {
       textInput.value = saved.text || '';
       textInput.placeholder = side === 'planned' ? 'Plan…' : 'Actual…';
       textInput.addEventListener('input', () => {
-        setSlot(currentDate, slot.key, side, 'text', textInput.value);
+        setSlotDebounced(tableDate, slot.key, side, 'text', textInput.value);
         if (activeFilter) applyFilter();
       });
       textInput.addEventListener('keydown', e => {
@@ -889,7 +1050,7 @@ function buildPicker() {
     const opt = document.createElement('div');
     opt.className = 'cat-opt';
     opt.dataset.catId = cat.id;
-    opt.innerHTML = `<span class="dot" style="background:${cat.color}"></span>${cat.label}`;
+    opt.innerHTML = `<span class="dot" style="background:${cat.color}"></span>${escapeHtml(cat.label)}`;
     opt.addEventListener('click', () => selectCategory(cat.id));
     picker.appendChild(opt);
   });
@@ -988,6 +1149,184 @@ document.querySelector('.ts-scroll').addEventListener('scroll', () => {
   closePicker();
 }, { passive: true });
 
+// ── Focus view and standard plan ─────────────────────────────────────────────
+function keyToMinutes(key) {
+  const [h, m] = key.split(':').map(Number);
+  return h * 60 + m;
+}
+function slotForMinute(minute) {
+  return SLOTS.find(s => s.minutes === Math.floor(minute / STEP) * STEP) || null;
+}
+function quickSlot() {
+  const now = new Date();
+  return slotForMinute(now.getHours() * 60 + now.getMinutes() - STEP);
+}
+function currentSlot() {
+  const now = new Date();
+  return slotForMinute(now.getHours() * 60 + now.getMinutes());
+}
+function categoryFor(id) {
+  return CAT_MAP[id] || CAT_MAP.none || { id: 'none', label: 'None', color: '#94a3b8' };
+}
+function plannedBlocks(data) {
+  const blocks = [];
+  SLOTS.forEach(slot => {
+    const planned = data[slot.key] && data[slot.key].planned;
+    if (!planned || (planned.cat === 'none' && !planned.text)) return;
+    const previous = blocks[blocks.length - 1];
+    if (previous && previous.end === slot.minutes && previous.cat === planned.cat && previous.text === (planned.text || '')) {
+      previous.end += STEP;
+      previous.keys.push(slot.key);
+    } else {
+      blocks.push({ start: slot.minutes, end: slot.minutes + STEP, cat: planned.cat || 'none', text: planned.text || '', keys: [slot.key] });
+    }
+  });
+  return blocks;
+}
+function setQuickFormFromPlan(data) {
+  const slot = quickSlot();
+  if (!slot) return;
+  const planned = data[slot.key] && data[slot.key].planned;
+  const select = document.getElementById('quickCat');
+  if (document.activeElement !== select) select.value = planned && planned.cat || 'none';
+}
+function renderFocus(data) {
+  if (!data || currentDate === undefined) return;
+  const today = currentDate === todayString();
+  const now = currentSlot();
+  const nowPlan = now && data[now.key] && data[now.key].planned;
+  const nowCard = document.getElementById('nowCard');
+  if (!today) {
+    nowCard.innerHTML = `<div class="focus-card-label">Viewing</div><div class="now-title">${formatDateLabel(currentDate)}</div><div class="now-meta">Use Edit details to make corrections to a past or future day.</div>`;
+  } else if (!now || !nowPlan || (nowPlan.cat === 'none' && !nowPlan.text)) {
+    nowCard.innerHTML = '<div class="focus-card-label">Now</div><div class="now-title">No activity planned</div><div class="now-meta">Apply the standard plan or add a block in Edit details.</div>';
+  } else {
+    const cat = categoryFor(nowPlan.cat);
+    const remaining = now.minutes + STEP - (new Date().getHours() * 60 + new Date().getMinutes());
+    nowCard.innerHTML = `<div class="focus-card-label">Now</div><div class="now-title"><span class="now-dot" style="background:${cat.color}"></span>${escapeHtml(cat.label)}</div><div class="now-meta">${escapeHtml(nowPlan.text || '')}${nowPlan.text ? ' · ' : ''}${Math.max(1, remaining)} minutes until the next check-in</div>`;
+  }
+
+  const blocks = plannedBlocks(data);
+  const planList = document.getElementById('planList');
+  planList.innerHTML = '';
+  if (!blocks.length) {
+    planList.innerHTML = '<div class="empty-plan">No plan yet. Apply the standard plan to set up the day in one click.</div>';
+  } else {
+    const minuteNow = new Date().getHours() * 60 + new Date().getMinutes();
+    blocks.forEach(block => {
+      const cat = categoryFor(block.cat);
+      const actualCount = block.keys.filter(key => {
+        const actual = data[key] && data[key].actual;
+        return actual && (actual.cat !== 'none' || actual.text);
+      }).length;
+      const row = document.createElement('div');
+      row.className = 'plan-block';
+      if (today && minuteNow >= block.start && minuteNow < block.end) row.classList.add('current');
+      if (today && minuteNow >= block.end) row.classList.add('done');
+      row.innerHTML = `<span class="plan-time">${minutesToLabel(block.start).replace(' ','')}–${minutesToLabel(block.end).replace(' ','')}</span><span class="plan-dot" style="background:${cat.color}"></span><span class="plan-cat">${escapeHtml(cat.label)}</span><span class="plan-text">${escapeHtml(block.text)}</span><span class="plan-actual">${actualCount}/${block.keys.length} logged</span>`;
+      planList.appendChild(row);
+    });
+  }
+
+  let plannedSales = 0, actualSales = 0, plannedCount = 0, matched = 0;
+  const minutesNow = new Date().getHours() * 60 + new Date().getMinutes();
+  SLOTS.forEach(slot => {
+    const cell = data[slot.key] || {};
+    const p = cell.planned || { cat: 'none' }, a = cell.actual || { cat: 'none' };
+    if (SALES_CATS.has(p.cat)) plannedSales++;
+    if (SALES_CATS.has(a.cat)) actualSales++;
+    const elapsed = !today || slot.minutes + STEP <= minutesNow;
+    if (p.cat !== 'none' && elapsed) { plannedCount++; if (p.cat === a.cat) matched++; }
+  });
+  const adherence = plannedCount ? Math.round(matched / plannedCount * 100) : 0;
+  document.getElementById('todayScore').innerHTML = `
+    <div class="score-cell"><div class="score-value">${(plannedSales*.25).toFixed(2)}h</div><div class="score-label">Planned sales</div></div>
+    <div class="score-cell"><div class="score-value">${(actualSales*.25).toFixed(2)}h</div><div class="score-label">Actual sales</div></div>
+    <div class="score-cell"><div class="score-value">${adherence}%</div><div class="score-label">Plan adherence so far</div></div>`;
+  document.getElementById('dayTheme').textContent = standardPlanFor(currentDate).theme;
+
+  const qSlot = quickSlot();
+  const quickEnabled = today && !!qSlot;
+  document.getElementById('quickCat').disabled = !quickEnabled;
+  document.getElementById('quickText').disabled = !quickEnabled;
+  document.getElementById('sameAsPlanBtn').disabled = !quickEnabled;
+  document.getElementById('quickSaveBtn').disabled = !quickEnabled;
+  document.getElementById('justFinishedTime').textContent = quickEnabled
+    ? `${minutesToLabel(qSlot.minutes)}–${minutesToLabel(qSlot.minutes + STEP)}` : 'Available when viewing today';
+  if (quickEnabled) setQuickFormFromPlan(data);
+}
+function escapeHtml(value) {
+  const div = document.createElement('div');
+  div.textContent = String(value || '');
+  return div.innerHTML;
+}
+function fillPlannedRange(data, from, to, cat, text, onlyEmpty = true) {
+  const start = keyToMinutes(from), end = keyToMinutes(to);
+  SLOTS.filter(s => s.minutes >= start && s.minutes < end).forEach(slot => {
+    if (!data[slot.key]) data[slot.key] = {};
+    const existing = data[slot.key].planned;
+    if (!onlyEmpty || !existing || (existing.cat === 'none' && !existing.text)) {
+      data[slot.key].planned = { cat, text };
+    }
+  });
+}
+async function applyStandardPlan() {
+  const data = await loadDay(currentDate);
+  standardPlanFor(currentDate).blocks.forEach(([from,to,cat,text]) => fillPlannedRange(data, from, to, cat, text, true));
+  try { await saveDay(currentDate, data); await refreshDayViews(); }
+  catch (e) { showStorageError(e); }
+}
+async function copyYesterdayPlan() {
+  const source = await window.ts.loadDay(offsetDate(currentDate, -1));
+  const data = await loadDay(currentDate);
+  SLOTS.forEach(slot => {
+    const planned = source[slot.key] && source[slot.key].planned;
+    const existing = data[slot.key] && data[slot.key].planned;
+    if (planned && (!existing || (existing.cat === 'none' && !existing.text))) {
+      if (!data[slot.key]) data[slot.key] = {};
+      data[slot.key].planned = { ...planned };
+    }
+  });
+  try { await saveDay(currentDate, data); await refreshDayViews(); }
+  catch (e) { showStorageError(e); }
+}
+async function quickLog(usePlan) {
+  const slot = quickSlot();
+  if (!slot || currentDate !== todayString()) return;
+  const data = await loadDay(currentDate);
+  const planned = data[slot.key] && data[slot.key].planned || { cat: 'none', text: '' };
+  const cat = usePlan ? planned.cat : document.getElementById('quickCat').value;
+  const typed = document.getElementById('quickText').value.trim();
+  const text = usePlan ? planned.text : typed;
+  if (!data[slot.key]) data[slot.key] = {};
+  data[slot.key].actual = { cat: cat || 'none', text: text || '' };
+  try {
+    await saveDay(currentDate, data);
+    document.getElementById('quickText').value = '';
+    await refreshDayViews();
+  } catch (e) { showStorageError(e); }
+}
+async function refreshDayViews() {
+  dayCache = null;
+  const data = await loadDay(currentDate);
+  renderFocus(data);
+  if (document.getElementById('detailView').classList.contains('open')) {
+    buildTable(); drawChart(); drawWeekly();
+  }
+}
+
+document.getElementById('applyTemplateBtn').addEventListener('click', applyStandardPlan);
+document.getElementById('copyYesterdayBtn').addEventListener('click', copyYesterdayPlan);
+document.getElementById('sameAsPlanBtn').addEventListener('click', () => quickLog(true));
+document.getElementById('quickSaveBtn').addEventListener('click', () => quickLog(false));
+document.getElementById('quickText').addEventListener('keydown', e => { if (e.key === 'Enter') quickLog(false); });
+document.getElementById('toggleDetailsBtn').addEventListener('click', e => {
+  const open = document.getElementById('detailView').classList.toggle('open');
+  document.getElementById('legend').classList.toggle('open', open);
+  e.currentTarget.textContent = open ? 'Hide details' : 'Edit details';
+  if (open) { buildTable(); drawChart(); drawWeekly(); }
+});
+
 // ── Date Navigation ───────────────────────────────────────────────────────────
 function formatDateLabel(dateStr) {
   const [y, m, d] = dateStr.split('-').map(Number);
@@ -1010,9 +1349,10 @@ function onDateChange() {
   activeFilter = null;
   clearSel();
   document.querySelectorAll('.legend-item').forEach(el => el.classList.remove('active-filter'));
-  buildTable();
-  drawChart();
-  drawWeekly();
+  loadDay(currentDate).then(renderFocus).catch(showStorageError);
+  if (document.getElementById('detailView').classList.contains('open')) {
+    buildTable(); drawChart(); drawWeekly();
+  }
 }
 
 document.getElementById('prevDay').addEventListener('click', () => shiftDate(-1));
@@ -1048,7 +1388,7 @@ function renderCatModalList() {
     const isProtected = cat.id === 'none';
     const payoffLabel = cat.payoff === 'high' ? '▲ High' : cat.payoff === 'low' ? '▼ Low' : '— Payoff';
     const payoffBtn = isProtected ? '' : `<button class="cat-payoff-btn ${cat.payoff||''}" title="Payoff — click to change">${payoffLabel}</button>`;
-    item.innerHTML = `<span class="cat-list-swatch" style="background:${cat.color}"></span><span class="cat-list-name">${cat.label}</span>${payoffBtn}<button class="cat-delete-btn" title="Delete" ${isProtected?'disabled':''}>✕</button>`;
+    item.innerHTML = `<span class="cat-list-swatch" style="background:${cat.color}"></span><span class="cat-list-name">${escapeHtml(cat.label)}</span>${payoffBtn}<button class="cat-delete-btn" title="Delete" ${isProtected?'disabled':''}>✕</button>`;
     if (!isProtected) {
       item.querySelector('.cat-payoff-btn').addEventListener('click', () => cyclePayoff(cat.id));
       item.querySelector('.cat-delete-btn').addEventListener('click', () => deleteCategory(cat.id));
@@ -1123,6 +1463,8 @@ function periodDates(period) {
 async function renderStats(period) {
   const { from, to } = periodDates(period);
   const allData = await window.ts.loadRange(from, to);
+  const todayKey = todayString();
+  const minuteNow = new Date().getHours() * 60 + new Date().getMinutes();
 
   // Collect dates in range
   const dates = [];
@@ -1131,7 +1473,7 @@ async function renderStats(period) {
 
   // Per-day hours, category counts (planned + actual), adherence, weekday totals
   let totalSlots = 0, totalDays = 0, maxDay = 0;
-  let plannedWithCat = 0, adhered = 0;
+  let plannedWithCat = 0, adhered = 0, unaccounted = 0;
   const catCounts     = {};   // actual
   const plannedCounts = {};   // planned
   const dailyTotals   = {};
@@ -1153,6 +1495,8 @@ async function renderStats(period) {
         plannedCounts[p.cat] = (plannedCounts[p.cat] || 0) + 1;
         plannedWithCat++;
         if (a.cat === p.cat) adhered++;
+        const elapsed = date < todayKey || (date === todayKey && s.minutes + STEP <= minuteNow);
+        if (elapsed && a.cat === 'none' && !a.text) unaccounted++;
       }
     });
     if (daySlots > 0) { totalDays++; totalSlots += daySlots; maxDay = Math.max(maxDay, daySlots); }
@@ -1206,16 +1550,22 @@ async function renderStats(period) {
     if (p === 'high') highSlots += c; else if (p === 'low') lowSlots += c;
   });
   const highHours = highSlots * 0.25, lowHours = lowSlots * 0.25;
+  const plannedSalesHours = ((plannedCounts.ontario_sales || 0) + (plannedCounts.montreal_sales || 0)) * 0.25;
+  const actualSalesHours = ((catCounts.ontario_sales || 0) + (catCounts.montreal_sales || 0)) * 0.25;
+  const ontarioHours = (catCounts.ontario_sales || 0) * 0.25;
+  const montrealHours = (catCounts.montreal_sales || 0) * 0.25;
+  const quoteHours = (catCounts.quotes_followup || 0) * 0.25;
+  const supportHours = ['meetings','admin','karl_vmi'].reduce((sum, id) => sum + (catCounts[id] || 0), 0) * 0.25;
 
   // KPI cards
   document.getElementById('statsKpi').innerHTML = `
-    <div class="stat-card"><div class="sc-label">Total Hours</div><div class="sc-value">${totalHours.toFixed(1)}</div><div class="sc-sub">${totalDays} active day${totalDays!==1?'s':''}</div>${trendHtml}</div>
-    <div class="stat-card"><div class="sc-label">Avg / Day</div><div class="sc-value">${avgHours.toFixed(1)}h</div><div class="sc-sub">on active days</div></div>
-    <div class="stat-card"><div class="sc-label">Streak</div><div class="sc-value">${streak}</div><div class="sc-sub">consecutive day${streak!==1?'s':''}</div></div>
+    <div class="stat-card"><div class="sc-label">Sales — Plan / Actual</div><div class="sc-value" style="font-size:20px">${plannedSalesHours.toFixed(1)}h / ${actualSalesHours.toFixed(1)}h</div><div class="sc-sub">planned versus completed sales time</div></div>
+    <div class="stat-card"><div class="sc-label">Ontario Sales</div><div class="sc-value">${ontarioHours.toFixed(1)}h</div><div class="sc-sub">actual time</div></div>
+    <div class="stat-card"><div class="sc-label">Montreal Sales</div><div class="sc-value">${montrealHours.toFixed(1)}h</div><div class="sc-sub">actual time</div></div>
+    <div class="stat-card"><div class="sc-label">Quotes / Follow-up</div><div class="sc-value">${quoteHours.toFixed(1)}h</div><div class="sc-sub">actual time</div></div>
+    <div class="stat-card"><div class="sc-label">Meetings / Support</div><div class="sc-value">${supportHours.toFixed(1)}h</div><div class="sc-sub">meetings, admin, Karl and VMI</div></div>
     <div class="stat-card"><div class="sc-label">Plan Adherence</div><div class="sc-value">${adherence===null?'—':adherence+'%'}</div><div class="sc-sub">${adherence===null?'no plans set':'actual matched plan'}</div></div>
-    <div class="stat-card"><div class="sc-label">Best Weekday</div><div class="sc-value" style="font-size:18px">${bestWd===null?'—':WD[bestWd]}</div><div class="sc-sub">${bestWd===null?'&nbsp;':bestWdAvg.toFixed(1)+'h avg'}</div></div>
-    <div class="stat-card"><div class="sc-label">Top Category</div><div class="sc-value" style="font-size:16px">${topCat ? topCat.label : '—'}</div><div class="sc-sub">${topCatId ? (topCatId[1]*0.25).toFixed(1)+'h' : ''}</div></div>
-    <div class="stat-card"><div class="sc-label">Payoff</div><div class="sc-value" style="font-size:18px"><span style="color:#22c55e">${highHours.toFixed(1)}h</span> / <span style="color:#ef4444">${lowHours.toFixed(1)}h</span></div><div class="sc-sub">high vs low payoff</div></div>
+    <div class="stat-card"><div class="sc-label">Unaccounted</div><div class="sc-value">${(unaccounted*.25).toFixed(1)}h</div><div class="sc-sub">planned time without an actual entry</div>${trendHtml}</div>
   `;
 
   // Bar chart
@@ -1289,7 +1639,7 @@ async function renderStats(period) {
       <td>
         <div style="display:flex;align-items:center;gap:6px">
           <span class="dot" style="background:${cat.color};width:10px;height:10px;flex-shrink:0"></span>
-          <span>${cat.label}${cat.payoff==='high'?' <span style="color:#22c55e">▲</span>':cat.payoff==='low'?' <span style="color:#ef4444">▼</span>':''}</span>
+          <span>${escapeHtml(cat.label)}${cat.payoff==='high'?' <span style="color:#22c55e">▲</span>':cat.payoff==='low'?' <span style="color:#ef4444">▼</span>':''}</span>
         </div>
         <div class="ct-bar" style="background:${cat.color};width:${pct}%"></div>
       </td>
@@ -1312,7 +1662,7 @@ async function renderStats(period) {
       const row = document.createElement('div');
       row.className = 'pva-row';
       row.innerHTML = `
-        <div class="pva-head"><span class="dot" style="background:${cat.color};width:9px;height:9px;flex-shrink:0"></span>${cat.label}</div>
+        <div class="pva-head"><span class="dot" style="background:${cat.color};width:9px;height:9px;flex-shrink:0"></span>${escapeHtml(cat.label)}</div>
         <div class="pva-track"><span class="pva-tag">Plan</span><div class="pva-bar-bg"><div class="pva-bar planned" style="width:${pl/pvaMax*100}%;background:${cat.color}"></div></div><span class="pva-hrs">${(pl*0.25).toFixed(1)}h</span></div>
         <div class="pva-track"><span class="pva-tag">Actual</span><div class="pva-bar-bg"><div class="pva-bar" style="width:${ac/pvaMax*100}%;background:${cat.color}"></div></div><span class="pva-hrs">${(ac*0.25).toFixed(1)}h</span></div>
       `;
@@ -1354,10 +1704,12 @@ async function doExport(type) {
   if (!from || !to) { showExportStatus('Please select a date range.', true); return; }
   if (from > to) { showExportStatus('Start date must be before end date.', true); return; }
 
-  const fn   = type === 'csv' ? window.ts.exportData : window.ts.exportJson;
-  const result = await fn(from, to);
-  if (result.cancelled) return;
-  showExportStatus(`Saved: ${result.filePath}`);
+  try {
+    const fn = type === 'csv' ? window.ts.exportData : window.ts.exportJson;
+    const result = await fn(from, to);
+    if (result.cancelled) return;
+    showExportStatus(`Saved: ${result.filePath}`);
+  } catch (e) { showExportStatus(String(e), true); }
 }
 
 function showExportStatus(msg, isErr) {
@@ -1433,7 +1785,7 @@ const { from: ewFrom, to: ewTo } = periodDates('week');
 setExportRange(ewFrom, ewTo);
 
 // Refresh when a reminder is submitted
-window.ts.onRefreshDay(() => { dayCache = null; buildTable(); drawChart(); drawWeekly(); });
+window.ts.onRefreshDay(() => { refreshDayViews().catch(showStorageError); });
 
 // Check for updates
 document.getElementById('checkUpdateBtn').addEventListener('click', async () => {
@@ -1468,7 +1820,7 @@ function applyTheme(theme) {
   document.getElementById('themeBtn').textContent = theme === 'light' ? '☽' : '☀';
   localStorage.setItem('theme', theme);
 }
-applyTheme(localStorage.getItem('theme') || 'dark');
+applyTheme(localStorage.getItem('theme') || 'light');
 document.getElementById('themeBtn').addEventListener('click', () => {
   applyTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light');
 });
@@ -1476,14 +1828,42 @@ document.getElementById('themeBtn').addEventListener('click', () => {
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {
   CATEGORIES = await window.ts.loadCategories();
+  let categoriesChanged = false;
+  CATEGORIES = CATEGORIES.map(cat => {
+    const safeColor = typeof cat.color === 'string' && /^#[0-9a-f]{6}$/i.test(cat.color) ? cat.color : '#64748b';
+    const safeLabel = String(cat.label || 'Unnamed').slice(0, 32);
+    if (safeColor !== cat.color || safeLabel !== cat.label) categoriesChanged = true;
+    const payoff = cat.payoff === 'high' || cat.payoff === 'low' ? cat.payoff : undefined;
+    if (payoff !== cat.payoff) categoriesChanged = true;
+    return { ...cat, label: safeLabel, color: safeColor, payoff };
+  });
+  RECOMMENDED_CATEGORIES.forEach(recommended => {
+    if (!CATEGORIES.some(cat => cat.id === recommended.id)) {
+      const otherIndex = CATEGORIES.findIndex(cat => cat.id === 'other');
+      CATEGORIES.splice(otherIndex < 0 ? CATEGORIES.length : otherIndex, 0, { ...recommended });
+      categoriesChanged = true;
+    }
+  });
+  if (categoriesChanged) await window.ts.saveCategories(CATEGORIES);
   CAT_MAP    = Object.fromEntries(CATEGORIES.map(c => [c.id, c]));
+  const quickCat = document.getElementById('quickCat');
+  quickCat.innerHTML = '';
+  CATEGORIES.forEach(cat => {
+    const option = document.createElement('option');
+    option.value = cat.id;
+    option.textContent = cat.label;
+    quickCat.appendChild(option);
+  });
   buildLegend();
   buildPicker();
   applySettings();
   onDateChange();
-  setInterval(updateNowIndicator, 30000);
+  setInterval(() => {
+    updateNowIndicator();
+    if (dayCache) renderFocus(dayCache);
+  }, 30000);
 }
-init();
+init().catch(showStorageError);
 </script>
 </body>
 </html>

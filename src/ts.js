@@ -13,6 +13,8 @@
     loadDay: (date) => invoke('load_day', { date }),
     loadRange: (from, to) => invoke('load_range', { from, to }),
     saveDay: (date, data) => invoke('save_day', { date, data }),
+    saveSlot: (date, slotKey, side, field, value) =>
+      invoke('save_slot', { date, slotKey, side, field, value }),
     loadCategories: () => invoke('load_categories'),
     saveCategories: (cats) => invoke('save_categories', { cats }),
     exportData: (from, to) => invoke('export_csv', { from, to }),

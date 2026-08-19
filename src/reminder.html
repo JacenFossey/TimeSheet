@@ -288,7 +288,11 @@ function buildPicker() {
     const opt = document.createElement('div');
     opt.className = 'cat-opt';
     opt.dataset.catId = cat.id;
-    opt.innerHTML = `<span class="dot" style="background:${cat.color}"></span>${cat.label}`;
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    dot.style.background = /^#[0-9a-f]{6}$/i.test(cat.color || '') ? cat.color : '#64748b';
+    opt.appendChild(dot);
+    opt.appendChild(document.createTextNode(String(cat.label || 'Unnamed')));
     opt.addEventListener('click', () => { setCategory(cat.id); closePicker(); });
     picker.appendChild(opt);
   });
@@ -324,7 +328,15 @@ function closePicker() { document.getElementById('catPicker').classList.remove('
 async function save() {
   clearInterval(countdownInt);
   const text = document.getElementById('actualInput').value.trim();
-  await window.ts.submitReminder(slotKey, selectedCat, text);
+  try {
+    await window.ts.submitReminder(slotKey, selectedCat, text);
+  } catch (e) {
+    const btn = document.getElementById('saveBtn');
+    btn.textContent = 'Save failed';
+    btn.title = String(e);
+    countdown = 120;
+    startCountdown();
+  }
 }
 
 function dismiss() {
