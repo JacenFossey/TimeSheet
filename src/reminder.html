@@ -214,8 +214,9 @@ async function init() {
   slotKey = slot.key;
   document.getElementById('slotTimeLabel').textContent = blockLabel(curMin - 15, curMin);
 
-  CATEGORIES = await window.ts.loadCategories();
-  CAT_MAP    = Object.fromEntries(CATEGORIES.map(c => [c.id, c]));
+  const allCategories = await window.ts.loadCategories();
+  CATEGORIES = allCategories.filter(cat => !cat.archived);
+  CAT_MAP    = Object.fromEntries(allCategories.map(c => [c.id, c]));
   buildPicker();
 
   const dayData     = await window.ts.loadDay(todayString());
@@ -227,7 +228,7 @@ async function init() {
     const pCat = CAT_MAP[plannedData.cat];
     document.getElementById('plannedText').textContent =
       (pCat && pCat.id !== 'none' ? `[${pCat.label}] ` : '') + (plannedData.text || '');
-    if (plannedData.cat && plannedData.cat !== 'none') setCategory(plannedData.cat);
+    if (plannedData.cat && plannedData.cat !== 'none' && CATEGORIES.some(cat => cat.id === plannedData.cat)) setCategory(plannedData.cat);
     if (plannedData.text) document.getElementById('actualInput').value = plannedData.text;
   }
 

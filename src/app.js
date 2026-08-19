@@ -5,7 +5,6 @@
   const START = 4 * 60 + 30;
   const END = 22 * 60 + 30;
   const SALES = new Set(['ontario_sales', 'montreal_sales']);
-  const CORE_CATEGORIES = new Set(['none', 'ontario_sales', 'montreal_sales', 'quotes_followup', 'meetings', 'admin', 'break', 'karl_vmi']);
   const VIEW_COPY = {
     today: ['Today', 'Follow the plan, then record what happened.'],
     report: ['Weekly report', 'A concise view you can send without cleanup.'],
@@ -78,6 +77,10 @@
 
   function category(id) {
     return categoryMap[id] || { id: id || 'none', label: id || 'None', color: '#95a29b' };
+  }
+
+  function activeCategories() {
+    return categories.filter(item => item.id !== 'none' && !item.archived);
   }
 
   function standardPlan(dateString) {
@@ -219,6 +222,7 @@
     $('dateTitle').textContent = formatDate(currentDate, { weekday: 'long', month: 'short', day: 'numeric' });
     $('datePicker').value = currentDate;
     $('dayTheme').textContent = themeFor(currentDate);
+    $('logOtherBtn').disabled = activeCategories().length === 0;
     const today = currentDate === todayString();
     const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
     const currentBlock = today ? blocks.find(block => nowMinutes >= block.start && nowMinutes < block.end) : null;
@@ -255,10 +259,10 @@
     }
 
     blocks.forEach(block => {
-      const logged = block.keys.filter(key => {
-        const actual = dayData[key]?.actual;
-        return actual && (actual.cat !== 'none' || actual.text);
-      }).length;
+      const actualEntries = block.keys
+        .map(key => dayData[key]?.actual)
+        .filter(actual => actual && (actual.cat !== 'none' || actual.text));
+      const logged = actualEntries.length;
       const matches = block.keys.filter(key => dayData[key]?.actual?.cat === block.cat).length;
       const row = document.createElement('div');
       row.className = 'work-block';
@@ -277,7 +281,15 @@
       cat.append(swatch, catText);
       const note = document.createElement('div');
       note.className = 'block-note';
-      note.textContent = block.text || '—';
+      const actualDescriptions = [...new Set(actualEntries.map(actual => actual.text).filter(Boolean))];
+      const actualCategories = [...new Set(actualEntries.map(actual => actual.cat).filter(id => id && id !== 'none'))];
+      const actualDiffers = actualCategories.some(id => id !== block.cat) || actualDescriptions.some(text => text !== block.text);
+      if (actualDiffers) {
+        const categoryText = actualCategories.length === 1 ? category(actualCategories[0]).label : 'Mixed actual work';
+        note.textContent = `Actual: ${categoryText}${actualDescriptions.length === 1 ? ` · ${actualDescriptions[0]}` : ''}`;
+      } else {
+        note.textContent = block.text || '—';
+      }
       const progress = document.createElement('div');
       progress.className = `progress${logged === block.keys.length ? ' done' : ''}`;
       progress.textContent = logged === block.keys.length ? (matches === logged ? '✓ Logged as planned' : '✓ Logged') : `${logged * STEP}/${block.keys.length * STEP} min logged`;
@@ -337,10 +349,13 @@
 
   function categoryOptions(selected) {
     const fragment = document.createDocumentFragment();
-    categories.filter(item => item.id !== 'none').forEach(item => {
+    const choices = activeCategories();
+    const selectedCategory = categories.find(item => item.id === selected);
+    if (selectedCategory?.archived) choices.unshift(selectedCategory);
+    choices.forEach(item => {
       const option = document.createElement('option');
       option.value = item.id;
-      option.textContent = item.label;
+      option.textContent = `${item.label}${item.archived ? ' (removed)' : ''}`;
       option.selected = item.id === selected;
       fragment.appendChild(option);
     });
@@ -408,9 +423,14 @@
   }
 
   function addEditorBlock() {
+    const firstCategory = activeCategories()[0];
+    if (!firstCategory) {
+      $('editorError').textContent = 'Add a category in Settings before creating a block.';
+      return;
+    }
     const lastEnd = editorBlocks.length ? Math.max(...editorBlocks.map(block => block.end)) : 480;
     const start = lastEnd < END - STEP ? lastEnd : 480;
-    editorBlocks.push({ start, end: Math.min(start + 60, END), cat: categories.find(item => item.id !== 'none')?.id || 'none', text: '' });
+    editorBlocks.push({ start, end: Math.min(start + 60, END), cat: firstCategory.id, text: '' });
     renderEditorRows();
   }
 
@@ -440,15 +460,21 @@
   }
 
   function openLogDialog(block = null) {
+    if (!activeCategories().length && !block) return;
     const now = new Date();
     const rounded = Math.max(START, Math.floor((now.getHours() * 60 + now.getMinutes()) / STEP) * STEP);
     const start = block?.start ?? Math.max(START, rounded - 30);
     const end = block?.end ?? Math.min(END, rounded);
-    $('logDialogTitle').textContent = block ? 'Record this work block' : 'Log different work';
+    const savedActuals = block
+      ? block.keys.map(key => dayData[key]?.actual).filter(actual => actual && (actual.cat !== 'none' || actual.text))
+      : [];
+    const latestActual = savedActuals[savedActuals.length - 1];
+    const selectedCategory = latestActual?.cat || block?.cat || activeCategories()[0]?.id;
+    $('logDialogTitle').textContent = savedActuals.length ? 'Correct actual work' : block ? 'Record this work block' : 'Log different work';
     $('logStart').replaceChildren(timeOptions(start));
     $('logEnd').replaceChildren(timeOptions(end, true));
-    $('logCategory').replaceChildren(categoryOptions(block?.cat));
-    $('logNote').value = block?.text || '';
+    $('logCategory').replaceChildren(categoryOptions(selectedCategory));
+    $('logNote').value = latestActual?.text ?? block?.text ?? '';
     $('logError').textContent = '';
     $('logDialog').showModal();
   }
@@ -593,7 +619,7 @@
       end.appendChild(timeOptions(keyToMinutes(block.end), true));
       end.addEventListener('change', () => { block.end = minutesToKey(Number(end.value)); });
       const cat = document.createElement('select');
-      cat.className = 'field';
+      cat.className = 'field standard-cat-select';
       cat.appendChild(categoryOptions(block.cat));
       cat.addEventListener('change', () => { block.cat = cat.value; });
       const note = document.createElement('input');
@@ -668,10 +694,44 @@
     }
   }
 
+  function refreshStandardCategoryChoices() {
+    document.querySelectorAll('#standardTemplateRows .standard-cat-select').forEach(select => {
+      const selected = select.value;
+      select.replaceChildren(categoryOptions(selected));
+      if ([...select.options].some(option => option.value === selected)) select.value = selected;
+    });
+  }
+
+  function archiveCategory(id) {
+    const item = categories.find(candidate => candidate.id === id);
+    if (!item) return;
+    const affectedBlocks = ['ontario', 'montreal']
+      .flatMap(templateId => standardDraft.templates[templateId])
+      .filter(block => block.cat === id).length;
+    const consequence = affectedBlocks
+      ? ` ${affectedBlocks} standard-plan block${affectedBlocks === 1 ? '' : 's'} using it will also be removed.`
+      : '';
+    if (!window.confirm(`Remove “${item.label}”? Historical reports will keep its name.${consequence}`)) return;
+    item.archived = true;
+    ['ontario', 'montreal'].forEach(templateId => {
+      standardDraft.templates[templateId] = standardDraft.templates[templateId].filter(block => block.cat !== id);
+    });
+    renderCategorySettings();
+    renderStandardPlanSettings();
+    setStatus('categoryStatus', 'Category removed. Click Save changes to keep it.');
+  }
+
   function renderCategorySettings() {
     const container = $('categoryRows');
     container.innerHTML = '';
-    categories.filter(item => item.id !== 'none').forEach((item, index) => {
+    const active = activeCategories();
+    if (!active.length) {
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.innerHTML = '<strong>No active categories</strong>Add one when you are ready to plan or log work.';
+      container.appendChild(empty);
+    }
+    active.forEach((item, index) => {
       const actualIndex = categories.indexOf(item);
       const row = document.createElement('div');
       row.className = 'category-row';
@@ -686,7 +746,10 @@
       name.maxLength = 32;
       name.value = item.label;
       name.setAttribute('aria-label', `Name for category ${index + 1}`);
-      name.addEventListener('input', () => { categories[actualIndex].label = name.value; });
+      name.addEventListener('input', () => {
+        categories[actualIndex].label = name.value;
+        refreshStandardCategoryChoices();
+      });
       const payoff = document.createElement('select');
       payoff.className = 'field';
       [['', 'Neutral'], ['high', 'High value'], ['low', 'Low value']].forEach(([value, label]) => {
@@ -699,9 +762,8 @@
       const remove = document.createElement('button');
       remove.className = 'icon-btn';
       remove.textContent = '×';
-      remove.title = CORE_CATEGORIES.has(item.id) ? 'Core categories cannot be removed' : 'Remove category';
-      remove.disabled = CORE_CATEGORIES.has(item.id);
-      remove.addEventListener('click', () => { categories.splice(actualIndex, 1); renderCategorySettings(); });
+      remove.title = 'Remove category';
+      remove.addEventListener('click', () => archiveCategory(item.id));
       row.append(color, name, payoff, remove);
       container.appendChild(row);
     });
@@ -710,6 +772,7 @@
   function addCategory() {
     categories.push({ id: `custom_${Date.now()}`, label: 'New category', color: '#557a68' });
     renderCategorySettings();
+    renderStandardPlanSettings();
     const inputs = document.querySelectorAll('#categoryRows input[type="text"]');
     inputs[inputs.length - 1]?.select();
   }
@@ -721,9 +784,19 @@
     }
     categories.forEach(item => { item.label = item.label.trim(); });
     try {
-      await queuedSave(() => window.ts.saveCategories(categories));
+      const validationError = validateStandardTemplates();
+      if (validationError) {
+        setStatus('categoryStatus', validationError, true);
+        return;
+      }
+      await queuedSave(async () => {
+        await window.ts.saveCategories(categories);
+        await window.ts.saveStandardPlan(standardDraft);
+      });
       categoryMap = Object.fromEntries(categories.map(item => [item.id, item]));
+      standardConfig = structuredClone(standardDraft);
       setStatus('categoryStatus', 'Categories saved.');
+      renderStandardPlanSettings();
       await renderDay();
     } catch (error) {
       setStatus('categoryStatus', String(error), true);

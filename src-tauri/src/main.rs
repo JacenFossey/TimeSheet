@@ -1067,7 +1067,7 @@ mod tests {
         });
         let html = weekly_report_to_html("2026-08-17", "2026-08-17", &range).unwrap();
         assert!(html.contains("Monday"));
-        assert!(html.contains("Ontario Sales"));
+        assert!(html.contains("Actual time by category"));
         assert!(html.contains("1.0h"));
         assert!(html.contains("100%"));
     }
