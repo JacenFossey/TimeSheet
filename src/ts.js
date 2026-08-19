@@ -17,6 +17,8 @@
       invoke('save_slot', { date, slotKey, side, field, value }),
     loadCategories: () => invoke('load_categories'),
     saveCategories: (cats) => invoke('save_categories', { cats }),
+    loadStandardPlan: () => invoke('load_standard_plan'),
+    saveStandardPlan: (config) => invoke('save_standard_plan', { config }),
     exportData: (from, to) => invoke('export_csv', { from, to }),
     exportJson: (from, to) => invoke('export_json', { from, to }),
 
@@ -25,6 +27,7 @@
     saveEmailSettings: (from, to, apiKey) =>
       invoke('save_email_settings', { from, to, apiKey }),
     sendTimesheetEmail: (date) => invoke('send_timesheet_email', { date }),
+    sendWeeklyReport: (from, to) => invoke('send_weekly_report_email', { from, to }),
 
     // Reminder window
     submitReminder: (slotKey, cat, text) =>

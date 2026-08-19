@@ -102,6 +102,9 @@ fn cats_file() -> PathBuf {
 fn email_cfg_file() -> PathBuf {
     base_dir().join("email.json")
 }
+fn standard_plan_file() -> PathBuf {
+    base_dir().join("standard-week.json")
+}
 
 fn read_day(date: &str) -> Result<Value, String> {
     let _guard = STORAGE_LOCK.lock().map_err(|e| e.to_string())?;
@@ -200,23 +203,58 @@ fn load_range_inner(from: &str, to: &str) -> Result<Value, String> {
 
 fn default_cats() -> Value {
     json!([
-        { "id": "none",     "label": "None",        "color": "#2e3350" },
+        { "id": "none",     "label": "None",        "color": "#95a29b" },
         { "id": "ontario_sales",  "label": "Ontario Sales",       "color": "#2563eb", "payoff": "high" },
         { "id": "montreal_sales", "label": "Montreal Sales",      "color": "#7c3aed", "payoff": "high" },
         { "id": "quotes_followup", "label": "Quotes / Follow-up", "color": "#0891b2", "payoff": "high" },
         { "id": "karl_vmi",        "label": "Karl / VMI",         "color": "#d97706" },
         { "id": "workflow",        "label": "Workflow Improvements", "color": "#64748b", "payoff": "low" },
-        { "id": "deep",     "label": "Deep Work",   "color": "#3b82f6" },
         { "id": "meetings", "label": "Meetings",    "color": "#a855f7" },
         { "id": "admin",    "label": "Admin",       "color": "#f97316" },
-        { "id": "break",    "label": "Break",       "color": "#22c55e" },
-        { "id": "personal", "label": "Personal",    "color": "#06b6d4" },
-        { "id": "exercise", "label": "Exercise",    "color": "#ef4444" },
-        { "id": "learning", "label": "Learning",    "color": "#eab308" },
-        { "id": "quoting",  "label": "Quoting",     "color": "#0d9488" },
-        { "id": "wasted",   "label": "Wasted Time", "color": "#991b1b" },
+        { "id": "break",    "label": "Lunch / Break", "color": "#22c55e" },
         { "id": "other",    "label": "Other",       "color": "#6b7280" }
     ])
+}
+
+fn default_standard_plan() -> Value {
+    let shared_start = json!([
+        { "start": "07:00", "end": "07:30", "cat": "admin", "text": "Priorities and urgent follow-ups" },
+        { "start": "07:30", "end": "08:00", "cat": "meetings", "text": "Morning meeting" }
+    ]);
+    let shared_end = json!([
+        { "start": "10:00", "end": "10:15", "cat": "admin", "text": "Log and reset" },
+        { "start": "12:00", "end": "13:00", "cat": "break", "text": "Lunch" },
+        { "start": "14:30", "end": "15:30", "cat": "quotes_followup", "text": "Quotes and follow-ups" },
+        { "start": "16:00", "end": "16:30", "cat": "meetings", "text": "EOD meeting and wrap-up" }
+    ]);
+    let make_template = |sales: &str, flex_cat: &str, flex_text: &str| {
+        let mut blocks = shared_start.as_array().cloned().unwrap_or_default();
+        blocks.push(
+            json!({ "start": "08:00", "end": "10:00", "cat": sales, "text": "Call block 1" }),
+        );
+        blocks.push(shared_end[0].clone());
+        blocks.push(
+            json!({ "start": "10:15", "end": "12:00", "cat": sales, "text": "Call block 2" }),
+        );
+        blocks.push(shared_end[1].clone());
+        blocks.push(
+            json!({ "start": "13:00", "end": "14:30", "cat": sales, "text": "Call block 3" }),
+        );
+        blocks.push(shared_end[2].clone());
+        blocks
+            .push(json!({ "start": "15:30", "end": "16:00", "cat": flex_cat, "text": flex_text }));
+        blocks.push(shared_end[3].clone());
+        Value::Array(blocks)
+    };
+    json!({
+        "templates": {
+            "ontario": make_template("ontario_sales", "admin", "Flex, admin, and tomorrow prep"),
+            "montreal": make_template("montreal_sales", "karl_vmi", "Flex / VMI / catch-up")
+        },
+        "week": {
+            "mon": "ontario", "tue": "ontario", "wed": "montreal", "thu": "ontario", "fri": "ontario"
+        }
+    })
 }
 
 fn today_string() -> String {
@@ -318,6 +356,90 @@ fn save_categories(cats: Value) -> Result<(), String> {
     }
     let _guard = STORAGE_LOCK.lock().map_err(|e| e.to_string())?;
     replace_file(&cats_file(), cats.to_string().as_bytes())
+}
+
+#[tauri::command]
+fn load_standard_plan() -> Value {
+    fs::read_to_string(standard_plan_file())
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_else(default_standard_plan)
+}
+
+fn validate_standard_plan(config: &Value) -> Result<(), String> {
+    let templates = config
+        .get("templates")
+        .and_then(Value::as_object)
+        .ok_or("Standard-week templates are required.")?;
+    for template_id in ["ontario", "montreal"] {
+        let blocks = templates
+            .get(template_id)
+            .and_then(Value::as_array)
+            .ok_or_else(|| format!("The {template_id} template is required."))?;
+        if blocks.len() > 32 {
+            return Err("A standard day cannot contain more than 32 blocks.".to_string());
+        }
+        let mut previous_end: Option<NaiveTime> = None;
+        for block in blocks {
+            let start = block
+                .get("start")
+                .and_then(Value::as_str)
+                .ok_or("Every block needs a start time.")?;
+            let end = block
+                .get("end")
+                .and_then(Value::as_str)
+                .ok_or("Every block needs an end time.")?;
+            validate_slot(start)?;
+            validate_slot(end)?;
+            let start_time =
+                NaiveTime::parse_from_str(start, "%H:%M").map_err(|e| e.to_string())?;
+            let end_time = NaiveTime::parse_from_str(end, "%H:%M").map_err(|e| e.to_string())?;
+            if start_time >= end_time {
+                return Err("Every block must end after it starts.".to_string());
+            }
+            if previous_end.is_some_and(|previous| start_time < previous) {
+                return Err("Standard-plan blocks cannot overlap.".to_string());
+            }
+            previous_end = Some(end_time);
+            let cat = block
+                .get("cat")
+                .and_then(Value::as_str)
+                .ok_or("Every block needs a category.")?;
+            if cat.is_empty() || !cat.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                return Err("A standard-plan category is invalid.".to_string());
+            }
+            let text = block
+                .get("text")
+                .and_then(Value::as_str)
+                .ok_or("Every block needs a description field.")?;
+            if text.chars().count() > 120 {
+                return Err("Standard-plan descriptions cannot exceed 120 characters.".to_string());
+            }
+        }
+    }
+    let week = config
+        .get("week")
+        .and_then(Value::as_object)
+        .ok_or("Standard-week assignments are required.")?;
+    for day in ["mon", "tue", "wed", "thu", "fri"] {
+        let template = week.get(day).and_then(Value::as_str).unwrap_or("");
+        if !matches!(template, "ontario" | "montreal") {
+            return Err(format!("Choose a valid template for {day}."));
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn save_standard_plan(config: Value) -> Result<(), String> {
+    validate_standard_plan(&config)?;
+    let _guard = STORAGE_LOCK.lock().map_err(|e| e.to_string())?;
+    replace_file(
+        &standard_plan_file(),
+        serde_json::to_string_pretty(&config)
+            .map_err(|e| e.to_string())?
+            .as_bytes(),
+    )
 }
 
 #[tauri::command]
@@ -448,6 +570,145 @@ fn day_to_html(date: &str, day: &Value) -> String {
     )
 }
 
+fn weekly_report_to_html(from: &str, to: &str, range: &Value) -> Result<String, String> {
+    validate_date(from)?;
+    validate_date(to)?;
+    let mut date = NaiveDate::parse_from_str(from, "%Y-%m-%d").map_err(|e| e.to_string())?;
+    let end = NaiveDate::parse_from_str(to, "%Y-%m-%d").map_err(|e| e.to_string())?;
+    if date > end {
+        return Err("Start date must be before end date.".to_string());
+    }
+
+    let labels = cat_labels();
+    let mut day_rows = String::new();
+    let mut category_counts = std::collections::BTreeMap::<String, usize>::new();
+    let mut planned_sales = 0usize;
+    let mut actual_sales = 0usize;
+    let mut total_actual = 0usize;
+    let mut total_unaccounted = 0usize;
+    let now = Local::now();
+    let today = now.date_naive();
+    let current_time = now.time();
+
+    while date <= end {
+        let date_key = date.format("%Y-%m-%d").to_string();
+        let day = range.get(&date_key).and_then(Value::as_object);
+        let mut day_planned_sales = 0usize;
+        let mut day_actual_sales = 0usize;
+        let mut day_actual = 0usize;
+        let mut day_planned = 0usize;
+        let mut day_matched = 0usize;
+
+        if let Some(slots) = day {
+            for (slot_key, sides) in slots {
+                let planned_cat = sides
+                    .get("planned")
+                    .and_then(|v| v.get("cat"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("none");
+                let actual_cat = sides
+                    .get("actual")
+                    .and_then(|v| v.get("cat"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("none");
+                let planned_text = sides
+                    .get("planned")
+                    .and_then(|v| v.get("text"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let actual_text = sides
+                    .get("actual")
+                    .and_then(|v| v.get("text"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let has_planned = planned_cat != "none" || !planned_text.is_empty();
+                let has_actual = actual_cat != "none" || !actual_text.is_empty();
+                let slot_elapsed = date < today
+                    || (date == today
+                        && NaiveTime::parse_from_str(slot_key, "%H:%M")
+                            .map(|time| time + chrono::Duration::minutes(15) <= current_time)
+                            .unwrap_or(false));
+
+                if matches!(planned_cat, "ontario_sales" | "montreal_sales") {
+                    day_planned_sales += 1;
+                }
+                if matches!(actual_cat, "ontario_sales" | "montreal_sales") {
+                    day_actual_sales += 1;
+                }
+                if has_planned && slot_elapsed {
+                    day_planned += 1;
+                    if actual_cat == planned_cat {
+                        day_matched += 1;
+                    }
+                }
+                if has_actual {
+                    day_actual += 1;
+                    if actual_cat != "none" {
+                        *category_counts.entry(actual_cat.to_string()).or_default() += 1;
+                    }
+                } else if has_planned && slot_elapsed {
+                    total_unaccounted += 1;
+                }
+            }
+        }
+
+        planned_sales += day_planned_sales;
+        actual_sales += day_actual_sales;
+        total_actual += day_actual;
+        let match_text = (day_matched * 100)
+            .checked_div(day_planned)
+            .map_or_else(|| "—".to_string(), |value| format!("{value}%"));
+        let td = "padding:9px 12px;border-bottom:1px solid #e3e9e5;text-align:right;";
+        day_rows.push_str(&format!(
+            "<tr><td style=\"{td}text-align:left;\"><strong>{}</strong><br><span style=\"color:#718078;font-size:12px;\">{}</span></td><td style=\"{td}\">{:.1}h</td><td style=\"{td}\">{:.1}h</td><td style=\"{td}\">{:.1}h</td><td style=\"{td}\">{}</td></tr>",
+            date.format("%A"),
+            date.format("%b %-d"),
+            day_planned_sales as f64 * 0.25,
+            day_actual_sales as f64 * 0.25,
+            day_actual as f64 * 0.25,
+            match_text
+        ));
+        date = date.succ_opt().ok_or("Date range is too large.")?;
+    }
+
+    let mut category_rows = String::new();
+    let mut sorted_categories: Vec<_> = category_counts.into_iter().collect();
+    sorted_categories.sort_by_key(|item| std::cmp::Reverse(item.1));
+    for (id, count) in sorted_categories {
+        let label = labels.get(&id).map(String::as_str).unwrap_or(&id);
+        category_rows.push_str(&format!(
+            "<tr><td style=\"padding:7px 10px;border-bottom:1px solid #e3e9e5;\">{}</td><td style=\"padding:7px 10px;border-bottom:1px solid #e3e9e5;text-align:right;font-weight:600;\">{:.1}h</td></tr>",
+            html_escape(label),
+            count as f64 * 0.25
+        ));
+    }
+    if category_rows.is_empty() {
+        category_rows
+            .push_str("<tr><td style=\"padding:10px;color:#718078;\">No work logged.</td></tr>");
+    }
+
+    let card = "display:inline-block;min-width:120px;padding:14px;margin:0 8px 10px 0;background:#f3f6f2;border:1px solid #dce5df;border-radius:10px;";
+    Ok(format!(
+        "<div style=\"font-family:Arial,sans-serif;font-size:14px;color:#20322a;max-width:760px;\">\
+         <p style=\"margin:0 0 5px;color:#2f6f5e;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;\">Weekly timesheet</p>\
+         <h1 style=\"margin:0 0 18px;font-size:25px;\">{} to {}</h1>\
+         <div><div style=\"{card}\"><strong style=\"font-size:21px;\">{:.1}h</strong><br><span style=\"color:#718078;font-size:11px;\">Sales planned</span></div>\
+         <div style=\"{card}\"><strong style=\"font-size:21px;\">{:.1}h</strong><br><span style=\"color:#718078;font-size:11px;\">Sales completed</span></div>\
+         <div style=\"{card}\"><strong style=\"font-size:21px;\">{:.1}h</strong><br><span style=\"color:#718078;font-size:11px;\">Total logged</span></div>\
+         <div style=\"{card}\"><strong style=\"font-size:21px;\">{:.1}h</strong><br><span style=\"color:#718078;font-size:11px;\">Unaccounted</span></div></div>\
+         <h2 style=\"font-size:15px;margin:18px 0 8px;\">Daily summary</h2>\
+         <table style=\"border-collapse:collapse;width:100%;\"><thead><tr style=\"color:#718078;font-size:10px;text-transform:uppercase;\"><th style=\"text-align:left;padding:8px 12px;\">Day</th><th style=\"text-align:right;padding:8px 12px;\">Sales plan</th><th style=\"text-align:right;padding:8px 12px;\">Sales actual</th><th style=\"text-align:right;padding:8px 12px;\">Logged</th><th style=\"text-align:right;padding:8px 12px;\">Match</th></tr></thead><tbody>{day_rows}</tbody></table>\
+         <h2 style=\"font-size:15px;margin:22px 0 8px;\">Actual time by category</h2>\
+         <table style=\"border-collapse:collapse;width:100%;max-width:420px;\"><tbody>{category_rows}</tbody></table></div>",
+        html_escape(from),
+        html_escape(to),
+        planned_sales as f64 * 0.25,
+        actual_sales as f64 * 0.25,
+        total_actual as f64 * 0.25,
+        total_unaccounted as f64 * 0.25,
+    ))
+}
+
 #[tauri::command]
 fn load_email_settings() -> Value {
     let mut v = fs::read_to_string(email_cfg_file())
@@ -483,7 +744,7 @@ fn save_email_settings(from: String, to: String, api_key: String) -> Result<(), 
     Ok(())
 }
 
-fn send_email_blocking(date: &str) -> Result<String, String> {
+fn send_html_email_blocking(subject: String, html: String) -> Result<String, String> {
     use lettre::message::header::ContentType;
     use lettre::transport::smtp::authentication::Credentials;
     use lettre::{Message, SmtpTransport, Transport};
@@ -501,13 +762,12 @@ fn send_email_blocking(date: &str) -> Result<String, String> {
         .get_password()
         .map_err(|_| "No SendGrid API key stored. Save one in Settings.".to_string())?;
 
-    let day = read_day(date)?;
     let email = Message::builder()
         .from(from.parse().map_err(|e| format!("Bad From address: {e}"))?)
         .to(to.parse().map_err(|e| format!("Bad To address: {e}"))?)
-        .subject(format!("Timesheet — {date}"))
+        .subject(subject)
         .header(ContentType::TEXT_HTML)
-        .body(day_to_html(date, &day))
+        .body(html)
         .map_err(|e| e.to_string())?;
 
     // SendGrid SMTP: username is the literal "apikey", password is the API key.
@@ -520,12 +780,24 @@ fn send_email_blocking(date: &str) -> Result<String, String> {
     Ok(format!("Sent to {to}"))
 }
 
+fn send_email_blocking(date: &str) -> Result<String, String> {
+    let day = read_day(date)?;
+    send_html_email_blocking(format!("Timesheet — {date}"), day_to_html(date, &day))
+}
+
 #[tauri::command]
 async fn send_timesheet_email(date: String) -> Result<String, String> {
     // async command → runs on the tokio pool, not the main thread, so the blocking
     // SMTP send doesn't freeze the UI. ponytail: a rare single-user send; not worth
     // spawn_blocking to free the worker thread.
     send_email_blocking(&date)
+}
+
+#[tauri::command]
+async fn send_weekly_report_email(from: String, to: String) -> Result<String, String> {
+    let range = load_range_inner(&from, &to)?;
+    let html = weekly_report_to_html(&from, &to, &range)?;
+    send_html_email_blocking(format!("Weekly timesheet — {from} to {to}"), html)
 }
 
 #[tauri::command]
@@ -644,11 +916,14 @@ fn main() {
             load_range,
             load_categories,
             save_categories,
+            load_standard_plan,
+            save_standard_plan,
             export_csv,
             export_json,
             load_email_settings,
             save_email_settings,
             send_timesheet_email,
+            send_weekly_report_email,
             submit_reminder,
             check_for_updates
         ])
@@ -778,5 +1053,34 @@ mod tests {
     fn day_to_html_handles_empty_day() {
         let html = day_to_html("2026-07-07", &json!({}));
         assert!(html.contains("No entries recorded."));
+    }
+
+    #[test]
+    fn weekly_report_summarizes_planned_and_actual_time() {
+        let range = json!({
+            "2026-08-17": {
+                "08:00": { "planned": { "cat": "ontario_sales", "text": "Calls" }, "actual": { "cat": "ontario_sales", "text": "Calls" } },
+                "08:15": { "planned": { "cat": "ontario_sales", "text": "Calls" }, "actual": { "cat": "ontario_sales", "text": "Calls" } },
+                "08:30": { "planned": { "cat": "ontario_sales", "text": "Calls" }, "actual": { "cat": "ontario_sales", "text": "Calls" } },
+                "08:45": { "planned": { "cat": "ontario_sales", "text": "Calls" }, "actual": { "cat": "ontario_sales", "text": "Calls" } }
+            }
+        });
+        let html = weekly_report_to_html("2026-08-17", "2026-08-17", &range).unwrap();
+        assert!(html.contains("Monday"));
+        assert!(html.contains("Ontario Sales"));
+        assert!(html.contains("1.0h"));
+        assert!(html.contains("100%"));
+    }
+
+    #[test]
+    fn default_standard_week_is_valid() {
+        assert!(validate_standard_plan(&default_standard_plan()).is_ok());
+    }
+
+    #[test]
+    fn standard_week_rejects_overlapping_blocks() {
+        let mut config = default_standard_plan();
+        config["templates"]["ontario"][1]["start"] = json!("07:15");
+        assert!(validate_standard_plan(&config).is_err());
     }
 }
