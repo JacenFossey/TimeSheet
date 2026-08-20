@@ -32,9 +32,11 @@
     // Reminder window
     submitReminder: (slotKey, cat, text) =>
       invoke('submit_reminder', { slotKey, cat, text }),
+    openReminderCorrection: (slotKey) => invoke('open_reminder_correction', { slotKey }),
     dismissReminder: () => getCurrentWindow().close(),
 
     onRefreshDay: (cb) => listen('refreshDay', () => cb()),
+    onCorrectSlot: (cb) => listen('correctSlot', event => cb(event.payload)),
 
     checkForUpdates: async () => {
       try {

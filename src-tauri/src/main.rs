@@ -818,6 +818,22 @@ fn submit_reminder(
     Ok(())
 }
 
+#[tauri::command]
+fn open_reminder_correction(app: AppHandle, slot_key: String) -> Result<(), String> {
+    validate_slot(&slot_key)?;
+    if let Some(window) = app.get_webview_window("main") {
+        window.show().map_err(|e| e.to_string())?;
+        window.unminimize().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+    }
+    app.emit("correctSlot", slot_key)
+        .map_err(|e| e.to_string())?;
+    if let Some(window) = app.get_webview_window("reminder") {
+        window.close().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 // ponytail: updater/dialog signatures here are the part most likely to need a
 // tweak on first `cargo tauri dev` — the rest of the file is plain std/serde.
 #[tauri::command]
@@ -914,6 +930,7 @@ fn main() {
             send_daily_ontario_report,
             send_weekly_report_email,
             submit_reminder,
+            open_reminder_correction,
             check_for_updates
         ])
         .setup(|app| {

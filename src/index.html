@@ -62,15 +62,18 @@
   .section-head { padding: 18px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
   .section-title { font-size: 14px; font-weight: 750; } .section-desc { color: var(--muted); font-size: 11px; margin-top: 2px; }
   .section-actions { margin-left: auto; display: flex; gap: 8px; } .block-list { padding: 8px; }
-  .work-block { display: grid; grid-template-columns: 118px minmax(190px, .8fr) minmax(170px, 1fr) 120px auto; align-items: center; gap: 13px; padding: 13px 12px; border-radius: 11px; border: 1px solid transparent; }
+  .work-block { display: grid; grid-template-columns: 118px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 14px 12px; border-radius: 11px; border: 1px solid transparent; }
   .work-block + .work-block { border-top-color: var(--border); border-radius: 0; }
   .work-block.current { background: var(--surface-tint); border-color: #cde1d5; border-radius: 11px; }
   .block-time { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .block-cat { display: flex; align-items: center; gap: 9px; font-weight: 700; min-width: 0; }
+  .block-copy { min-width: 0; }
   .swatch { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
   .block-note { color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .progress { color: var(--muted); font-size: 10px; text-align: right; } .progress.done { color: var(--brand); font-weight: 700; }
   .block-actions { display: flex; gap: 6px; justify-content: flex-end; }
+  .decision-btn { width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--border-strong); background: var(--surface); cursor: pointer; font-size: 18px; font-weight: 760; line-height: 1; display: grid; place-items: center; transition: .15s ease; }
+  .decision-btn.yes { color: var(--brand); } .decision-btn.yes:hover, .decision-btn.yes.selected { background: var(--brand); border-color: var(--brand); color: white; }
+  .decision-btn.no { color: var(--danger); } .decision-btn.no:hover, .decision-btn.no.selected { background: #f8e9eb; border-color: #e8bfc4; }
   .empty { text-align: center; padding: 48px 22px; color: var(--muted); } .empty strong { display: block; color: var(--ink); font-size: 16px; margin-bottom: 5px; }
   .editor-shell { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); overflow: hidden; }
   .editor-head { padding: 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border); }
@@ -116,7 +119,7 @@
   @media (max-width: 850px) {
     .app { grid-template-columns: 76px minmax(0, 1fr); } .sidebar { padding: 20px 10px; } .brand-copy, .nav-label, .sidebar-foot { display: none; }
     .brand { justify-content: center; padding-inline: 0; } .nav-btn { justify-content: center; padding-inline: 8px; }
-    .metrics { grid-template-columns: repeat(2,1fr); } .work-block { grid-template-columns: 105px 1fr auto; } .block-note { grid-column: 2 / 4; } .progress { display: none; }
+    .metrics { grid-template-columns: repeat(2,1fr); } .work-block { grid-template-columns: 105px 1fr auto; }
     .settings-grid, .report-grid { grid-template-columns: 1fr; }
     .weekday-map { grid-template-columns: repeat(2, 1fr); }
   }
@@ -141,7 +144,7 @@
           <div class="date-row"><button class="icon-btn" id="prevDay" aria-label="Previous day">‹</button><button class="date-title btn" id="dateTitle"></button><input type="date" id="datePicker" hidden><button class="icon-btn" id="nextDay" aria-label="Next day">›</button><button class="btn small" id="goToday">Today</button><span class="date-theme" id="dayTheme"></span></div>
           <div class="hero"><div><div class="eyebrow" id="heroEyebrow">Your focus now</div><h2 id="heroTitle">Loading…</h2><p id="heroText"></p></div><div class="hero-action-stack"><div class="hero-actions"><button class="btn" id="sendDailyReportBtn">Send daily report</button><button class="btn" id="setupWeekBtn">Set up this week</button><button class="btn primary" id="editPlanBtn">Edit plan</button></div><div class="hero-status" id="dailyReportStatus"></div></div></div>
           <div class="metrics" id="dayMetrics"></div>
-          <div class="section-card"><div class="section-head"><div><div class="section-title">Work blocks</div><div class="section-desc">Log an entire block at once—no timeline required.</div></div><div class="section-actions"><button class="btn small" id="logOtherBtn">Log different work</button></div></div><div class="block-list" id="blockList"></div></div>
+          <div class="section-card"><div class="section-head"><div><div class="section-title">Work blocks</div><div class="section-desc">Choose ✓ if the block went to plan, or × if it didn’t.</div></div><div class="section-actions"><button class="btn small" id="logOtherBtn">Log unplanned work</button></div></div><div class="block-list" id="blockList"></div></div>
         </div>
         <div id="planEditor" hidden>
           <div class="editor-shell"><div class="editor-head"><button class="icon-btn" id="closeEditor" aria-label="Back">←</button><div class="editor-head-copy"><div class="editor-title">Edit the day</div><div class="editor-sub" id="editorDate"></div></div><button class="btn small" id="standardPlanBtn">Use standard plan</button></div><div class="editor-list" id="editorRows"></div><div class="editor-foot"><button class="btn" id="addBlockBtn">+ Add block</button><span class="form-error" id="editorError"></span><span style="flex:1"></span><button class="btn" id="cancelEditor">Cancel</button><button class="btn primary" id="savePlanBtn">Save plan</button></div></div>

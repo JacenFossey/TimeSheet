@@ -25,6 +25,7 @@
   let activeStandardTemplate = 'ontario';
   let dayData = {};
   let editorBlocks = [];
+  let correctionRange = null;
   let saveQueue = Promise.resolve();
 
   const $ = id => document.getElementById(id);
@@ -135,6 +136,13 @@
     Object.keys(data).forEach(key => {
       if (data[key] && typeof data[key] === 'object') delete data[key][side];
       if (data[key] && Object.keys(data[key]).length === 0) delete data[key];
+    });
+  }
+
+  function clearRange(data, side, start, end) {
+    SLOTS.filter(slot => slot.minutes >= start && slot.minutes < end).forEach(slot => {
+      if (data[slot.key] && typeof data[slot.key] === 'object') delete data[slot.key][side];
+      if (data[slot.key] && Object.keys(data[slot.key]).length === 0) delete data[slot.key];
     });
   }
 
@@ -274,6 +282,8 @@
       const time = document.createElement('div');
       time.className = 'block-time';
       time.textContent = `${shortTime(block.start)} – ${shortTime(block.end)}`;
+      const copy = document.createElement('div');
+      copy.className = 'block-copy';
       const cat = document.createElement('div');
       cat.className = 'block-cat';
       const swatch = document.createElement('span');
@@ -293,30 +303,30 @@
       } else {
         note.textContent = block.text || '—';
       }
-      const progress = document.createElement('div');
-      progress.className = `progress${logged === block.keys.length ? ' done' : ''}`;
-      progress.textContent = logged === block.keys.length ? (matches === logged ? '✓ Logged as planned' : '✓ Logged') : `${logged * STEP}/${block.keys.length * STEP} min logged`;
+      copy.append(cat, note);
       const actions = document.createElement('div');
       actions.className = 'block-actions';
-      if (logged < block.keys.length) {
-        const logPlan = document.createElement('button');
-        logPlan.className = 'btn small soft';
-        logPlan.textContent = logged ? 'Complete as planned' : 'Log as planned';
-        logPlan.addEventListener('click', () => logBlockAsPlanned(block));
-        actions.appendChild(logPlan);
-      }
+      const logPlan = document.createElement('button');
+      logPlan.className = `decision-btn yes${logged === block.keys.length && matches === logged ? ' selected' : ''}`;
+      logPlan.textContent = '✓';
+      logPlan.title = 'Yes — I worked as planned';
+      logPlan.setAttribute('aria-label', 'Worked as planned');
+      logPlan.addEventListener('click', () => logBlockAsPlanned(block));
       const change = document.createElement('button');
-      change.className = 'btn small';
-      change.textContent = logged ? 'Correct' : 'Different';
+      change.className = `decision-btn no${logged && !(logged === block.keys.length && matches === logged) ? ' selected' : ''}`;
+      change.textContent = '×';
+      change.title = 'No — enter what I actually did';
+      change.setAttribute('aria-label', 'Enter different work');
       change.addEventListener('click', () => openLogDialog(block));
-      actions.appendChild(change);
-      row.append(time, cat, note, progress, actions);
+      actions.append(logPlan, change);
+      row.append(time, copy, actions);
       list.appendChild(row);
     });
   }
 
   async function logBlockAsPlanned(block) {
-    fillRange(dayData, 'actual', block.start, block.end, block.cat, block.text, true);
+    clearRange(dayData, 'actual', block.start, block.end);
+    fillRange(dayData, 'actual', block.start, block.end, block.cat, block.text);
     await queuedSave(() => window.ts.saveDay(currentDate, dayData));
     await loadCurrentDay();
   }
@@ -472,8 +482,9 @@
       ? block.keys.map(key => dayData[key]?.actual).filter(actual => actual && (actual.cat !== 'none' || actual.text))
       : [];
     const latestActual = savedActuals[savedActuals.length - 1];
+    correctionRange = block && savedActuals.length ? { start: block.start, end: block.end } : null;
     const selectedCategory = latestActual?.cat || block?.cat || activeCategories()[0]?.id;
-    $('logDialogTitle').textContent = savedActuals.length ? 'Correct actual work' : block ? 'Record this work block' : 'Log different work';
+    $('logDialogTitle').textContent = 'What did you actually do?';
     $('logStart').replaceChildren(timeOptions(start));
     $('logEnd').replaceChildren(timeOptions(end, true));
     $('logCategory').replaceChildren(categoryOptions(selectedCategory));
@@ -489,10 +500,30 @@
       $('logError').textContent = 'Choose an end time after the start time.';
       return;
     }
+    if (correctionRange) {
+      clearRange(dayData, 'actual', correctionRange.start, correctionRange.end);
+    }
     fillRange(dayData, 'actual', start, end, $('logCategory').value, $('logNote').value.trim());
+    correctionRange = null;
     await queuedSave(() => window.ts.saveDay(currentDate, dayData));
     $('logDialog').close();
     await loadCurrentDay();
+  }
+
+  async function openCorrectionForSlot(slotKey) {
+    const start = keyToMinutes(slotKey);
+    if (!Number.isFinite(start) || start < START || start >= END) return;
+    currentDate = todayString();
+    activateView('today');
+    await loadCurrentDay();
+    const planned = dayData[slotKey]?.planned || {};
+    openLogDialog({
+      start,
+      end: start + STEP,
+      cat: planned.cat || activeCategories()[0]?.id || 'none',
+      text: planned.text || '',
+      keys: [slotKey],
+    });
   }
 
   async function renderReport() {
@@ -863,7 +894,7 @@
     $('standardPlanBtn').addEventListener('click', useStandardPlan);
     $('savePlanBtn').addEventListener('click', savePlan);
     $('logOtherBtn').addEventListener('click', () => openLogDialog());
-    $('cancelLog').addEventListener('click', () => $('logDialog').close());
+    $('cancelLog').addEventListener('click', () => { correctionRange = null; $('logDialog').close(); });
     $('saveLog').addEventListener('click', saveLoggedWork);
     $('prevWeek').addEventListener('click', () => { weekAnchor = offsetDate(weekAnchor, -7); renderReport(); });
     $('nextWeek').addEventListener('click', () => { weekAnchor = offsetDate(weekAnchor, 7); renderReport(); });
@@ -883,8 +914,9 @@
     });
     window.ts.onUpdateStatus(message => setStatus('updateStatus', message));
     window.ts.onRefreshDay(() => loadCurrentDay());
+    window.ts.onCorrectSlot(slotKey => openCorrectionForSlot(slotKey));
     window.addEventListener('keydown', event => {
-      if (event.key === 'Escape' && $('logDialog').open) $('logDialog').close();
+      if (event.key === 'Escape' && $('logDialog').open) { correctionRange = null; $('logDialog').close(); }
       else if (event.key === 'Escape' && !$('planEditor').hidden) closePlanEditor();
     });
   }

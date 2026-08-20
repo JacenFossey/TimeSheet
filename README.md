@@ -8,9 +8,9 @@ A local desktop timesheet app built with Tauri v2 (native WebView2).
 - One-click standard workweek plan (Ontario sales, Wednesday Montreal/Flex)
 - Editable Ontario and Montreal/Flex templates with weekday assignments
 - Full-block plan editing with no timeline or reporting clutter
-- One-click “Log as planned” for entire work blocks, plus simple corrections
+- Simple ✓ / × decisions for each work block, with corrections only when needed
 - Planned vs. actual tracking backed by compatible 15-minute data
-- 15-minute popup reminders to log what you just did
+- Minimal 15-minute ✓ / × reminders; × opens the correction form in the app
 - Concise weekly report with daily and category totals
 - One-click daily manager email reporting Ontario CRM call time
 - One-click CSV export for the selected week
