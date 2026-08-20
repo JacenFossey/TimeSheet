@@ -12,7 +12,7 @@ A local desktop timesheet app built with Tauri v2 (native WebView2).
 - Planned vs. actual tracking backed by compatible 15-minute data
 - Minimal 15-minute ✓ / × reminders; × opens the correction form in the app
 - Concise weekly report with daily and category totals
-- One-click daily manager email reporting Ontario CRM call time
+- One-click daily manager email with Ontario CRM time and a full category breakdown
 - One-click CSV export for the selected week
 - Weekly report email through SendGrid
 - Data stored locally as one JSON file per day under `%AppData%\Timesheet\days`

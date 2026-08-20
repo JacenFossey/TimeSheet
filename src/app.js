@@ -617,9 +617,9 @@
   async function emailDailyReport() {
     const button = $('sendDailyReportBtn');
     button.disabled = true;
-    setStatus('dailyReportStatus', 'Sending Ontario CRM call time…');
+    setStatus('dailyReportStatus', 'Sending daily category breakdown…');
     try {
-      const result = await window.ts.sendDailyOntarioReport(currentDate);
+      const result = await window.ts.sendDailyReport(currentDate);
       setStatus('dailyReportStatus', result);
     } catch (error) {
       setStatus('dailyReportStatus', String(error), true);
