@@ -4,7 +4,6 @@
   const STEP = 15;
   const START = 4 * 60 + 30;
   const END = 22 * 60 + 30;
-  const SALES = new Set(['ontario_sales', 'montreal_sales']);
   const VIEW_COPY = {
     today: ['Today', 'Follow the plan, then record what happened.'],
     report: ['Weekly report', 'A concise view you can send without cleanup.'],
@@ -199,9 +198,7 @@
   }
 
   function daySummary(data, dateString) {
-    let plannedSales = 0;
-    let actualSales = 0;
-    let actualOntario = 0;
+    let plannedTotal = 0;
     let actualTotal = 0;
     let adherencePlanned = 0;
     let matched = 0;
@@ -214,9 +211,7 @@
       const hasPlanned = planned.cat !== 'none' || planned.text;
       const hasActual = actual.cat !== 'none' || actual.text;
       const elapsed = dateString < todayString() || (dateString === todayString() && slot.minutes + STEP <= currentMinutes);
-      if (SALES.has(planned.cat)) plannedSales++;
-      if (SALES.has(actual.cat)) actualSales++;
-      if (actual.cat === 'ontario_sales') actualOntario++;
+      if (hasPlanned) plannedTotal++;
       if (hasActual) actualTotal++;
       if (hasPlanned && elapsed) {
         adherencePlanned++;
@@ -224,7 +219,7 @@
       }
       if (hasPlanned && !hasActual && elapsed) unaccounted++;
     }
-    return { plannedSales, actualSales, actualOntario, actualTotal, adherencePlanned, matched, unaccounted };
+    return { plannedTotal, actualTotal, adherencePlanned, matched, unaccounted };
   }
 
   async function renderDay() {
@@ -253,9 +248,9 @@
 
     const metrics = $('dayMetrics');
     metrics.replaceChildren(
-      metric(`${(summary.plannedSales * .25).toFixed(1)}h`, 'Sales planned'),
-      metric(`${(summary.actualOntario * .25).toFixed(1)}h`, 'Ontario CRM calls'),
+      metric(`${(summary.plannedTotal * .25).toFixed(1)}h`, 'Planned'),
       metric(`${(summary.actualTotal * .25).toFixed(1)}h`, 'Total logged'),
+      metric(`${(summary.unaccounted * .25).toFixed(1)}h`, 'Unlogged so far'),
       metric(summary.adherencePlanned ? `${Math.round(summary.matched / summary.adherencePlanned * 100)}%` : '—', 'Matched the plan so far'),
     );
 
@@ -531,7 +526,7 @@
     const to = offsetDate(from, 6);
     $('weekLabel').textContent = `${formatDate(from, { month: 'short', day: 'numeric' })} – ${formatDate(to, { month: 'short', day: 'numeric', year: 'numeric' })}`;
     const all = await window.ts.loadRange(from, to);
-    const totals = { plannedSales: 0, actualSales: 0, logged: 0, unaccounted: 0 };
+    const totals = { planned: 0, logged: 0, unaccounted: 0, adherencePlanned: 0, matched: 0 };
     const categoryCounts = {};
     const tbody = $('dailyReport');
     tbody.innerHTML = '';
@@ -539,10 +534,11 @@
       const date = offsetDate(from, index);
       const data = all[date] || {};
       const summary = daySummary(data, date);
-      totals.plannedSales += summary.plannedSales;
-      totals.actualSales += summary.actualSales;
+      totals.planned += summary.plannedTotal;
       totals.logged += summary.actualTotal;
       totals.unaccounted += summary.unaccounted;
+      totals.adherencePlanned += summary.adherencePlanned;
+      totals.matched += summary.matched;
       SLOTS.forEach(slot => {
         const actual = data[slot.key]?.actual;
         if (actual && actual.cat !== 'none') categoryCounts[actual.cat] = (categoryCounts[actual.cat] || 0) + 1;
@@ -557,9 +553,9 @@
       dayDate.textContent = formatDate(date, { month: 'short', day: 'numeric' });
       dayCell.append(dayName, dayDate);
       const values = [
-        `${(summary.plannedSales * .25).toFixed(1)}h`,
-        `${(summary.actualSales * .25).toFixed(1)}h`,
+        `${(summary.plannedTotal * .25).toFixed(1)}h`,
         `${(summary.actualTotal * .25).toFixed(1)}h`,
+        `${(summary.unaccounted * .25).toFixed(1)}h`,
         summary.adherencePlanned ? `${Math.round(summary.matched / summary.adherencePlanned * 100)}%` : '—',
       ];
       row.appendChild(dayCell);
@@ -567,11 +563,14 @@
       tbody.appendChild(row);
     }
     $('reportMetrics').replaceChildren(
-      metric(`${(totals.plannedSales * .25).toFixed(1)}h`, 'Sales planned'),
-      metric(`${(totals.actualSales * .25).toFixed(1)}h`, 'Sales completed'),
+      metric(`${(totals.planned * .25).toFixed(1)}h`, 'Planned'),
       metric(`${(totals.logged * .25).toFixed(1)}h`, 'Total logged'),
-      metric(`${(totals.unaccounted * .25).toFixed(1)}h`, 'Unaccounted'),
+      metric(`${(totals.unaccounted * .25).toFixed(1)}h`, 'Planned time unlogged'),
+      metric(totals.adherencePlanned ? `${Math.round(totals.matched / totals.adherencePlanned * 100)}%` : '—', 'Matched the plan'),
     );
+    $('unloggedNote').textContent = totals.unaccounted
+      ? `${(totals.unaccounted * .25).toFixed(1)}h of elapsed planned time was unlogged. These gaps are excluded from actual totals and emailed reports.`
+      : 'All elapsed planned time has been logged. Only actual entries are included in emailed reports.';
     const summary = $('categoryReport');
     summary.innerHTML = '';
     const sorted = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1]);

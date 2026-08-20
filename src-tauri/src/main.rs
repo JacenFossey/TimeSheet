@@ -546,20 +546,12 @@ fn daily_category_counts(day: &Value) -> std::collections::BTreeMap<String, usiz
 fn daily_report_to_html(date: &str, day: &Value) -> String {
     let labels = cat_labels();
     let counts = daily_category_counts(day);
-    let ontario_hours = counts.get("ontario_sales").copied().unwrap_or(0) as f64 * 0.25;
     let total_hours = counts.values().sum::<usize>() as f64 * 0.25;
     let mut sorted: Vec<_> = counts.iter().collect();
-    sorted.sort_by(|(id_a, count_a), (id_b, count_b)| {
-        let ontario_order = (*id_b == "ontario_sales").cmp(&(*id_a == "ontario_sales"));
-        ontario_order.then_with(|| count_b.cmp(count_a))
-    });
+    sorted.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
     let mut rows = String::new();
     for (id, count) in sorted {
-        let label = if id == "ontario_sales" {
-            "Ontario CRM calls"
-        } else {
-            labels.get(id).map(String::as_str).unwrap_or(id)
-        };
+        let label = labels.get(id).map(String::as_str).unwrap_or(id);
         rows.push_str(&format!(
             "<tr><td style=\"padding:9px 12px;border-bottom:1px solid #e3e9e5;\">{}</td><td style=\"padding:9px 12px;border-bottom:1px solid #e3e9e5;text-align:right;font-weight:700;\">{:.1}h</td></tr>",
             html_escape(label),
@@ -569,13 +561,11 @@ fn daily_report_to_html(date: &str, day: &Value) -> String {
     if rows.is_empty() {
         rows.push_str("<tr><td style=\"padding:12px;color:#718078;\">No work logged.</td></tr>");
     }
-    let card = "display:inline-block;min-width:150px;padding:18px;margin:0 8px 10px 0;background:#f3f6f2;border:1px solid #dce5df;border-radius:12px;";
     format!(
         "<div style=\"font-family:Arial,sans-serif;color:#20322a;max-width:560px;padding:8px;\">\
          <p style=\"margin:0 0 5px;color:#2f6f5e;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;\">Daily activity report</p>\
          <h1 style=\"margin:0 0 20px;font-size:25px;\">{}</h1>\
-         <div><div style=\"{card}\"><strong style=\"display:block;font-size:26px;line-height:1.1;\">{ontario_hours:.1}h</strong><span style=\"color:#718078;font-size:12px;\">Ontario CRM calls</span></div>\
-         <div style=\"{card}\"><strong style=\"display:block;font-size:26px;line-height:1.1;\">{total_hours:.1}h</strong><span style=\"color:#718078;font-size:12px;\">Total logged</span></div></div>\
+         <div style=\"display:inline-block;min-width:150px;padding:18px;background:#f3f6f2;border:1px solid #dce5df;border-radius:12px;\"><strong style=\"display:block;font-size:26px;line-height:1.1;\">{total_hours:.1}h</strong><span style=\"color:#718078;font-size:12px;\">Total logged</span></div>\
          <h2 style=\"font-size:15px;margin:16px 0 8px;\">Time by category</h2>\
          <table style=\"border-collapse:collapse;width:100%;max-width:440px;\"><tbody>{rows}</tbody></table></div>",
         html_escape(date),
@@ -594,91 +584,43 @@ fn weekly_report_to_html(from: &str, to: &str, range: &Value) -> Result<String, 
     let labels = cat_labels();
     let mut day_rows = String::new();
     let mut category_counts = std::collections::BTreeMap::<String, usize>::new();
-    let mut planned_sales = 0usize;
-    let mut actual_sales = 0usize;
     let mut total_actual = 0usize;
-    let mut total_unaccounted = 0usize;
-    let now = Local::now();
-    let today = now.date_naive();
-    let current_time = now.time();
 
     while date <= end {
         let date_key = date.format("%Y-%m-%d").to_string();
         let day = range.get(&date_key).and_then(Value::as_object);
-        let mut day_planned_sales = 0usize;
-        let mut day_actual_sales = 0usize;
         let mut day_actual = 0usize;
-        let mut day_planned = 0usize;
-        let mut day_matched = 0usize;
 
         if let Some(slots) = day {
-            for (slot_key, sides) in slots {
-                let planned_cat = sides
-                    .get("planned")
-                    .and_then(|v| v.get("cat"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("none");
+            for sides in slots.values() {
                 let actual_cat = sides
                     .get("actual")
                     .and_then(|v| v.get("cat"))
                     .and_then(Value::as_str)
                     .unwrap_or("none");
-                let planned_text = sides
-                    .get("planned")
-                    .and_then(|v| v.get("text"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
                 let actual_text = sides
                     .get("actual")
                     .and_then(|v| v.get("text"))
                     .and_then(Value::as_str)
                     .unwrap_or("");
-                let has_planned = planned_cat != "none" || !planned_text.is_empty();
                 let has_actual = actual_cat != "none" || !actual_text.is_empty();
-                let slot_elapsed = date < today
-                    || (date == today
-                        && NaiveTime::parse_from_str(slot_key, "%H:%M")
-                            .map(|time| time + chrono::Duration::minutes(15) <= current_time)
-                            .unwrap_or(false));
 
-                if matches!(planned_cat, "ontario_sales" | "montreal_sales") {
-                    day_planned_sales += 1;
-                }
-                if matches!(actual_cat, "ontario_sales" | "montreal_sales") {
-                    day_actual_sales += 1;
-                }
-                if has_planned && slot_elapsed {
-                    day_planned += 1;
-                    if actual_cat == planned_cat {
-                        day_matched += 1;
-                    }
-                }
                 if has_actual {
                     day_actual += 1;
                     if actual_cat != "none" {
                         *category_counts.entry(actual_cat.to_string()).or_default() += 1;
                     }
-                } else if has_planned && slot_elapsed {
-                    total_unaccounted += 1;
                 }
             }
         }
 
-        planned_sales += day_planned_sales;
-        actual_sales += day_actual_sales;
         total_actual += day_actual;
-        let match_text = (day_matched * 100)
-            .checked_div(day_planned)
-            .map_or_else(|| "—".to_string(), |value| format!("{value}%"));
         let td = "padding:9px 12px;border-bottom:1px solid #e3e9e5;text-align:right;";
         day_rows.push_str(&format!(
-            "<tr><td style=\"{td}text-align:left;\"><strong>{}</strong><br><span style=\"color:#718078;font-size:12px;\">{}</span></td><td style=\"{td}\">{:.1}h</td><td style=\"{td}\">{:.1}h</td><td style=\"{td}\">{:.1}h</td><td style=\"{td}\">{}</td></tr>",
+            "<tr><td style=\"{td}text-align:left;\"><strong>{}</strong><br><span style=\"color:#718078;font-size:12px;\">{}</span></td><td style=\"{td}\">{:.1}h</td></tr>",
             date.format("%A"),
             date.format("%b %-d"),
-            day_planned_sales as f64 * 0.25,
-            day_actual_sales as f64 * 0.25,
             day_actual as f64 * 0.25,
-            match_text
         ));
         date = date.succ_opt().ok_or("Date range is too large.")?;
     }
@@ -704,20 +646,14 @@ fn weekly_report_to_html(from: &str, to: &str, range: &Value) -> Result<String, 
         "<div style=\"font-family:Arial,sans-serif;font-size:14px;color:#20322a;max-width:760px;\">\
          <p style=\"margin:0 0 5px;color:#2f6f5e;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;\">Weekly timesheet</p>\
          <h1 style=\"margin:0 0 18px;font-size:25px;\">{} to {}</h1>\
-         <div><div style=\"{card}\"><strong style=\"font-size:21px;\">{:.1}h</strong><br><span style=\"color:#718078;font-size:11px;\">Sales planned</span></div>\
-         <div style=\"{card}\"><strong style=\"font-size:21px;\">{:.1}h</strong><br><span style=\"color:#718078;font-size:11px;\">Sales completed</span></div>\
-         <div style=\"{card}\"><strong style=\"font-size:21px;\">{:.1}h</strong><br><span style=\"color:#718078;font-size:11px;\">Total logged</span></div>\
-         <div style=\"{card}\"><strong style=\"font-size:21px;\">{:.1}h</strong><br><span style=\"color:#718078;font-size:11px;\">Unaccounted</span></div></div>\
-         <h2 style=\"font-size:15px;margin:18px 0 8px;\">Daily summary</h2>\
-         <table style=\"border-collapse:collapse;width:100%;\"><thead><tr style=\"color:#718078;font-size:10px;text-transform:uppercase;\"><th style=\"text-align:left;padding:8px 12px;\">Day</th><th style=\"text-align:right;padding:8px 12px;\">Sales plan</th><th style=\"text-align:right;padding:8px 12px;\">Sales actual</th><th style=\"text-align:right;padding:8px 12px;\">Logged</th><th style=\"text-align:right;padding:8px 12px;\">Match</th></tr></thead><tbody>{day_rows}</tbody></table>\
+         <div><div style=\"{card}\"><strong style=\"font-size:21px;\">{:.1}h</strong><br><span style=\"color:#718078;font-size:11px;\">Total logged</span></div></div>\
+         <h2 style=\"font-size:15px;margin:18px 0 8px;\">Logged time by day</h2>\
+         <table style=\"border-collapse:collapse;width:100%;\"><thead><tr style=\"color:#718078;font-size:10px;text-transform:uppercase;\"><th style=\"text-align:left;padding:8px 12px;\">Day</th><th style=\"text-align:right;padding:8px 12px;\">Total logged</th></tr></thead><tbody>{day_rows}</tbody></table>\
          <h2 style=\"font-size:15px;margin:22px 0 8px;\">Actual time by category</h2>\
          <table style=\"border-collapse:collapse;width:100%;max-width:420px;\"><tbody>{category_rows}</tbody></table></div>",
         html_escape(from),
         html_escape(to),
-        planned_sales as f64 * 0.25,
-        actual_sales as f64 * 0.25,
         total_actual as f64 * 0.25,
-        total_unaccounted as f64 * 0.25,
     ))
 }
 
@@ -1076,10 +1012,9 @@ mod tests {
         });
         let html = daily_report_to_html("2026-07-07", &day);
         assert!(html.contains("2026-07-07"));
-        assert!(html.contains("0.5h"));
         assert!(html.contains("0.8h"));
-        assert!(html.contains("Ontario CRM calls"));
         assert!(html.contains("Time by category"));
+        assert!(!html.contains("Ontario CRM calls"));
         let counts = daily_category_counts(&day);
         assert_eq!(counts.get("ontario_sales"), Some(&2));
         assert_eq!(counts.get("montreal_sales"), Some(&1));
@@ -1093,20 +1028,23 @@ mod tests {
     }
 
     #[test]
-    fn weekly_report_summarizes_planned_and_actual_time() {
+    fn weekly_email_reports_only_actual_logged_time() {
         let range = json!({
             "2026-08-17": {
                 "08:00": { "planned": { "cat": "ontario_sales", "text": "Calls" }, "actual": { "cat": "ontario_sales", "text": "Calls" } },
                 "08:15": { "planned": { "cat": "ontario_sales", "text": "Calls" }, "actual": { "cat": "ontario_sales", "text": "Calls" } },
                 "08:30": { "planned": { "cat": "ontario_sales", "text": "Calls" }, "actual": { "cat": "ontario_sales", "text": "Calls" } },
-                "08:45": { "planned": { "cat": "ontario_sales", "text": "Calls" }, "actual": { "cat": "ontario_sales", "text": "Calls" } }
+                "08:45": { "planned": { "cat": "ontario_sales", "text": "Calls" }, "actual": { "cat": "ontario_sales", "text": "Calls" } },
+                "09:00": { "planned": { "cat": "meetings", "text": "Unlogged meeting" } }
             }
         });
         let html = weekly_report_to_html("2026-08-17", "2026-08-17", &range).unwrap();
         assert!(html.contains("Monday"));
         assert!(html.contains("Actual time by category"));
         assert!(html.contains("1.0h"));
-        assert!(html.contains("100%"));
+        assert!(!html.contains("Unlogged meeting"));
+        assert!(!html.contains("Sales planned"));
+        assert!(!html.contains("Unaccounted"));
     }
 
     #[test]

@@ -93,6 +93,7 @@
   .day-name { font-weight: 700; } .day-date { color: var(--muted); font-size: 10px; }
   .report-grid { display: grid; grid-template-columns: 1.4fr .8fr; gap: 16px; margin-top: 16px; }
   .category-summary { padding: 8px 18px 16px; }
+  .report-note { margin: -6px 0 16px; padding: 10px 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-tint); color: var(--muted); font-size: 11px; }
   .category-summary-row { display: grid; grid-template-columns: 1fr auto; gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--border); } .category-summary-row:last-child { border-bottom: 0; }
   .category-name { display: flex; align-items: center; gap: 8px; }
   .settings-grid { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(300px,.8fr); gap: 16px; align-items: start; }
@@ -153,7 +154,8 @@
       <section class="view" id="view-report">
         <div class="week-nav"><button class="icon-btn" id="prevWeek">‹</button><div class="week-label" id="weekLabel"></div><button class="icon-btn" id="nextWeek">›</button><button class="btn small" id="thisWeekBtn">This week</button><div class="report-actions"><button class="btn" id="exportWeekBtn">Export CSV</button><button class="btn primary" id="emailWeekBtn">Send report</button></div></div>
         <div class="metrics" id="reportMetrics"></div>
-        <div class="report-grid"><div class="section-card"><div class="section-head"><div><div class="section-title">Daily summary</div><div class="section-desc">Planned versus completed work.</div></div></div><table class="report-table"><thead><tr><th>Day</th><th>Sales plan</th><th>Sales actual</th><th>Logged</th><th>Match</th></tr></thead><tbody id="dailyReport"></tbody></table></div><div class="section-card"><div class="section-head"><div><div class="section-title">Where the week went</div><div class="section-desc">Actual hours by category.</div></div></div><div class="category-summary" id="categoryReport"></div></div></div>
+        <div class="report-note" id="unloggedNote"></div>
+        <div class="report-grid"><div class="section-card"><div class="section-head"><div><div class="section-title">Daily summary</div><div class="section-desc">The plan is a reference; logged time is what actually happened.</div></div></div><table class="report-table"><thead><tr><th>Day</th><th>Planned</th><th>Logged</th><th>Unlogged</th><th>Match</th></tr></thead><tbody id="dailyReport"></tbody></table></div><div class="section-card"><div class="section-head"><div><div class="section-title">Where the week went</div><div class="section-desc">Actual logged hours by category.</div></div></div><div class="category-summary" id="categoryReport"></div></div></div>
         <div class="status" id="reportStatus"></div>
       </section>
       <section class="view" id="view-settings">
