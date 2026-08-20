@@ -185,6 +185,7 @@
   }
 
   async function loadCurrentDay() {
+    setStatus('dailyReportStatus', '');
     dayData = await window.ts.loadDay(currentDate);
     await renderDay();
   }
@@ -192,6 +193,7 @@
   function daySummary(data, dateString) {
     let plannedSales = 0;
     let actualSales = 0;
+    let actualOntario = 0;
     let actualTotal = 0;
     let adherencePlanned = 0;
     let matched = 0;
@@ -206,6 +208,7 @@
       const elapsed = dateString < todayString() || (dateString === todayString() && slot.minutes + STEP <= currentMinutes);
       if (SALES.has(planned.cat)) plannedSales++;
       if (SALES.has(actual.cat)) actualSales++;
+      if (actual.cat === 'ontario_sales') actualOntario++;
       if (hasActual) actualTotal++;
       if (hasPlanned && elapsed) {
         adherencePlanned++;
@@ -213,7 +216,7 @@
       }
       if (hasPlanned && !hasActual && elapsed) unaccounted++;
     }
-    return { plannedSales, actualSales, actualTotal, adherencePlanned, matched, unaccounted };
+    return { plannedSales, actualSales, actualOntario, actualTotal, adherencePlanned, matched, unaccounted };
   }
 
   async function renderDay() {
@@ -243,7 +246,7 @@
     const metrics = $('dayMetrics');
     metrics.replaceChildren(
       metric(`${(summary.plannedSales * .25).toFixed(1)}h`, 'Sales planned'),
-      metric(`${(summary.actualSales * .25).toFixed(1)}h`, 'Sales completed'),
+      metric(`${(summary.actualOntario * .25).toFixed(1)}h`, 'Ontario CRM calls'),
       metric(`${(summary.actualTotal * .25).toFixed(1)}h`, 'Total logged'),
       metric(summary.adherencePlanned ? `${Math.round(summary.matched / summary.adherencePlanned * 100)}%` : '—', 'Matched the plan so far'),
     );
@@ -580,6 +583,20 @@
     }
   }
 
+  async function emailDailyReport() {
+    const button = $('sendDailyReportBtn');
+    button.disabled = true;
+    setStatus('dailyReportStatus', 'Sending Ontario CRM call time…');
+    try {
+      const result = await window.ts.sendDailyOntarioReport(currentDate);
+      setStatus('dailyReportStatus', result);
+    } catch (error) {
+      setStatus('dailyReportStatus', String(error), true);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
   async function exportWeek() {
     setStatus('reportStatus', 'Choose where to save the report…');
     try {
@@ -838,6 +855,7 @@
     });
     $('datePicker').addEventListener('change', event => { if (event.target.value) { currentDate = event.target.value; loadCurrentDay(); } event.target.hidden = true; });
     $('setupWeekBtn').addEventListener('click', setupWeek);
+    $('sendDailyReportBtn').addEventListener('click', emailDailyReport);
     $('editPlanBtn').addEventListener('click', openPlanEditor);
     $('closeEditor').addEventListener('click', closePlanEditor);
     $('cancelEditor').addEventListener('click', closePlanEditor);

@@ -50,7 +50,10 @@
   .eyebrow { color: var(--brand); font-size: 10px; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; margin-bottom: 7px; }
   .hero h2 { margin: 0; font-size: 26px; line-height: 1.15; letter-spacing: -.035em; }
   .hero p { margin: 7px 0 0; color: var(--muted); max-width: 610px; }
+  .hero-action-stack { min-width: 280px; }
   .hero-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .hero-status { min-height: 17px; margin-top: 7px; text-align: right; color: var(--brand); font-size: 10px; }
+  .hero-status.error { color: var(--danger); }
   .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
   .metric { background: rgba(255,255,255,.72); border: 1px solid var(--border); border-radius: 13px; padding: 14px 16px; }
   .metric-value { font-size: 21px; font-weight: 780; letter-spacing: -.03em; }
@@ -136,7 +139,7 @@
       <section class="view active" id="view-today">
         <div id="dayDashboard">
           <div class="date-row"><button class="icon-btn" id="prevDay" aria-label="Previous day">‹</button><button class="date-title btn" id="dateTitle"></button><input type="date" id="datePicker" hidden><button class="icon-btn" id="nextDay" aria-label="Next day">›</button><button class="btn small" id="goToday">Today</button><span class="date-theme" id="dayTheme"></span></div>
-          <div class="hero"><div><div class="eyebrow" id="heroEyebrow">Your focus now</div><h2 id="heroTitle">Loading…</h2><p id="heroText"></p></div><div class="hero-actions"><button class="btn" id="setupWeekBtn">Set up this week</button><button class="btn primary" id="editPlanBtn">Edit plan</button></div></div>
+          <div class="hero"><div><div class="eyebrow" id="heroEyebrow">Your focus now</div><h2 id="heroTitle">Loading…</h2><p id="heroText"></p></div><div class="hero-action-stack"><div class="hero-actions"><button class="btn" id="sendDailyReportBtn">Send daily report</button><button class="btn" id="setupWeekBtn">Set up this week</button><button class="btn primary" id="editPlanBtn">Edit plan</button></div><div class="hero-status" id="dailyReportStatus"></div></div></div>
           <div class="metrics" id="dayMetrics"></div>
           <div class="section-card"><div class="section-head"><div><div class="section-title">Work blocks</div><div class="section-desc">Log an entire block at once—no timeline required.</div></div><div class="section-actions"><button class="btn small" id="logOtherBtn">Log different work</button></div></div><div class="block-list" id="blockList"></div></div>
         </div>
@@ -169,7 +172,7 @@
           </div>
           <div class="section-card"><div class="section-head"><div><div class="section-title">Categories</div><div class="section-desc">Use plain names and colours that are easy to scan.</div></div></div><div class="settings-body"><div id="categoryRows"></div><div class="settings-actions"><button class="btn" id="addCategoryBtn">+ Add category</button><button class="btn primary" id="saveCategoriesBtn">Save changes</button></div><div class="status" id="categoryStatus"></div></div></div>
           <div style="display:flex;flex-direction:column;gap:16px">
-            <div class="section-card"><div class="section-head"><div><div class="section-title">Report delivery</div><div class="section-desc">Send the weekly summary through SendGrid.</div></div></div><div class="settings-body"><div class="form-group"><label class="form-label" for="emailFrom">From</label><input class="field" type="email" id="emailFrom" placeholder="you@company.com"></div><div class="form-group"><label class="form-label" for="emailTo">Send to</label><input class="field" type="email" id="emailTo" placeholder="manager@company.com"></div><div class="form-group"><label class="form-label" for="emailKey">SendGrid API key</label><input class="field" type="password" id="emailKey" placeholder="SG.…" autocomplete="off"><div class="help">Leave this blank to keep the saved key.</div></div><button class="btn primary" id="saveEmailBtn">Save delivery settings</button><div class="status" id="emailStatus"></div></div></div>
+            <div class="section-card"><div class="section-head"><div><div class="section-title">Report delivery</div><div class="section-desc">Send daily Ontario call time or the weekly summary through SendGrid.</div></div></div><div class="settings-body"><div class="form-group"><label class="form-label" for="emailFrom">From</label><input class="field" type="email" id="emailFrom" placeholder="you@company.com"></div><div class="form-group"><label class="form-label" for="emailTo">Send to</label><input class="field" type="email" id="emailTo" placeholder="manager@company.com"></div><div class="form-group"><label class="form-label" for="emailKey">SendGrid API key</label><input class="field" type="password" id="emailKey" placeholder="SG.…" autocomplete="off"><div class="help">Leave this blank to keep the saved key.</div></div><button class="btn primary" id="saveEmailBtn">Save delivery settings</button><div class="status" id="emailStatus"></div></div></div>
             <div class="section-card"><div class="section-head"><div><div class="section-title">Application</div><div class="section-desc">Updates are checked automatically.</div></div></div><div class="settings-body"><button class="btn" id="checkUpdatesBtn">Check for updates</button><div class="status" id="updateStatus"></div></div></div>
           </div>
         </div>

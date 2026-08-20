@@ -26,7 +26,7 @@
     loadEmailSettings: () => invoke('load_email_settings'),
     saveEmailSettings: (from, to, apiKey) =>
       invoke('save_email_settings', { from, to, apiKey }),
-    sendTimesheetEmail: (date) => invoke('send_timesheet_email', { date }),
+    sendDailyOntarioReport: (date) => invoke('send_daily_ontario_report', { date }),
     sendWeeklyReport: (from, to) => invoke('send_weekly_report_email', { from, to }),
 
     // Reminder window

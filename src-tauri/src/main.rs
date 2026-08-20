@@ -498,8 +498,8 @@ fn export_json(app: AppHandle, from: String, to: String) -> Result<Value, String
 
 // ── Email (SendGrid SMTP) ─────────────────────────────────────────────────────
 // From/To live in email.json; the API key lives in Windows Credential Manager
-// (keyring), never on disk in cleartext. The email body is the day's *actual*
-// entries as an HTML table — a manager-facing report, no attachment.
+// (keyring), never on disk in cleartext. Manager-facing reports are HTML emails
+// with no attachment.
 
 fn keyring_entry() -> Result<keyring::Entry, String> {
     keyring::Entry::new("Timesheet", "sendgrid").map_err(|e| e.to_string())
@@ -526,47 +526,32 @@ fn cat_labels() -> std::collections::HashMap<String, String> {
     m
 }
 
-fn day_to_html(date: &str, day: &Value) -> String {
-    let labels = cat_labels();
-    let mut rows = String::new();
-    // serde_json Map is a BTreeMap here (no preserve_order feature), so "HH:MM"
-    // slot keys iterate in chronological order — same assumption as export_csv.
-    if let Some(slots) = day.as_object() {
-        for (slot, sides) in slots {
-            let actual = sides.get("actual");
-            let cat = actual
-                .and_then(|a| a.get("cat"))
-                .and_then(|c| c.as_str())
-                .unwrap_or("none");
-            let text = actual
-                .and_then(|a| a.get("text"))
-                .and_then(|t| t.as_str())
-                .unwrap_or("");
-            if cat == "none" && text.is_empty() {
-                continue;
-            }
-            let cat_label = labels.get(cat).map(|s| s.as_str()).unwrap_or(cat);
-            let td = "padding:4px 10px;border-bottom:1px solid #eee;";
-            rows.push_str(&format!(
-                "<tr><td style=\"{td}\">{}</td><td style=\"{td}\">{}</td><td style=\"{td}\">{}</td></tr>",
-                html_escape(slot),
-                html_escape(cat_label),
-                html_escape(text)
-            ));
-        }
-    }
-    if rows.is_empty() {
-        rows.push_str("<tr><td colspan=\"3\" style=\"padding:10px;color:#888;\">No entries recorded.</td></tr>");
-    }
-    let th = "text-align:left;padding:4px 10px;border-bottom:2px solid #333;";
+fn ontario_crm_minutes(day: &Value) -> usize {
+    day.as_object().map_or(0, |slots| {
+        slots
+            .values()
+            .filter(|sides| {
+                sides
+                    .get("actual")
+                    .and_then(|actual| actual.get("cat"))
+                    .and_then(Value::as_str)
+                    == Some("ontario_sales")
+            })
+            .count()
+            * 15
+    })
+}
+
+fn daily_ontario_report_to_html(date: &str, day: &Value) -> String {
+    let hours = ontario_crm_minutes(day) as f64 / 60.0;
     format!(
-        "<div style=\"font-family:Arial,sans-serif;font-size:14px;color:#222;\">\
-         <h2 style=\"margin:0 0 12px;\">Timesheet — {}</h2>\
-         <table style=\"border-collapse:collapse;width:100%;max-width:520px;\">\
-         <thead><tr><th style=\"{th}\">Time</th><th style=\"{th}\">Category</th><th style=\"{th}\">Notes</th></tr></thead>\
-         <tbody>{}</tbody></table></div>",
+        "<div style=\"font-family:Arial,sans-serif;color:#20322a;max-width:520px;padding:8px;\">\
+         <p style=\"margin:0 0 5px;color:#2f6f5e;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;\">Daily activity report</p>\
+         <h1 style=\"margin:0 0 20px;font-size:25px;\">{}</h1>\
+         <div style=\"padding:20px;background:#f3f6f2;border:1px solid #dce5df;border-radius:12px;\">\
+         <strong style=\"display:block;font-size:30px;line-height:1.1;\">{hours:.1} hours</strong>\
+         <span style=\"color:#718078;font-size:13px;\">Ontario CRM calls</span></div></div>",
         html_escape(date),
-        rows
     )
 }
 
@@ -780,17 +765,21 @@ fn send_html_email_blocking(subject: String, html: String) -> Result<String, Str
     Ok(format!("Sent to {to}"))
 }
 
-fn send_email_blocking(date: &str) -> Result<String, String> {
+fn send_daily_ontario_report_blocking(date: &str) -> Result<String, String> {
     let day = read_day(date)?;
-    send_html_email_blocking(format!("Timesheet — {date}"), day_to_html(date, &day))
+    let hours = ontario_crm_minutes(&day) as f64 / 60.0;
+    send_html_email_blocking(
+        format!("Ontario CRM calls — {date} — {hours:.1}h"),
+        daily_ontario_report_to_html(date, &day),
+    )
 }
 
 #[tauri::command]
-async fn send_timesheet_email(date: String) -> Result<String, String> {
+async fn send_daily_ontario_report(date: String) -> Result<String, String> {
     // async command → runs on the tokio pool, not the main thread, so the blocking
     // SMTP send doesn't freeze the UI. ponytail: a rare single-user send; not worth
     // spawn_blocking to free the worker thread.
-    send_email_blocking(&date)
+    send_daily_ontario_report_blocking(&date)
 }
 
 #[tauri::command]
@@ -922,7 +911,7 @@ fn main() {
             export_json,
             load_email_settings,
             save_email_settings,
-            send_timesheet_email,
+            send_daily_ontario_report,
             send_weekly_report_email,
             submit_reminder,
             check_for_updates
@@ -1035,24 +1024,24 @@ mod tests {
     }
 
     #[test]
-    fn day_to_html_renders_actuals_and_escapes() {
+    fn daily_ontario_report_counts_only_actual_ontario_calls() {
         let day = json!({
-            "07:00": { "actual": { "cat": "deep", "text": "spec <review> & notes" } },
-            "07:15": { "planned": { "cat": "meetings", "text": "standup" } }, // no actual → skipped
-            "07:30": { "actual": { "cat": "none", "text": "" } }              // empty → skipped
+            "08:00": { "actual": { "cat": "ontario_sales", "text": "Calls" } },
+            "08:15": { "actual": { "cat": "ontario_sales", "text": "Calls" } },
+            "08:30": { "planned": { "cat": "ontario_sales", "text": "Calls" } },
+            "08:45": { "actual": { "cat": "montreal_sales", "text": "Calls" } }
         });
-        let html = day_to_html("2026-07-07", &day);
+        let html = daily_ontario_report_to_html("2026-07-07", &day);
         assert!(html.contains("2026-07-07"));
-        assert!(html.contains("07:00"));
-        assert!(html.contains("spec &lt;review&gt; &amp; notes")); // escaped
-        assert!(!html.contains("standup")); // planned-only slot omitted
-        assert!(!html.contains("07:30")); // empty actual omitted
+        assert!(html.contains("0.5 hours"));
+        assert!(html.contains("Ontario CRM calls"));
+        assert_eq!(ontario_crm_minutes(&day), 30);
     }
 
     #[test]
-    fn day_to_html_handles_empty_day() {
-        let html = day_to_html("2026-07-07", &json!({}));
-        assert!(html.contains("No entries recorded."));
+    fn daily_ontario_report_handles_zero_hours() {
+        let html = daily_ontario_report_to_html("2026-07-07", &json!({}));
+        assert!(html.contains("0.0 hours"));
     }
 
     #[test]
