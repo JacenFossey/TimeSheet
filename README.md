@@ -5,8 +5,8 @@ A local desktop timesheet app built with Tauri v2 (native WebView2).
 ## Features
 
 - Focus view showing the current work block and today's progress
-- One-click standard workweek plan (Ontario sales, Wednesday Montreal/Flex)
-- Editable Ontario and Montreal/Flex templates with weekday assignments
+- One-click standard workweek plan with reusable day templates
+- Create, name, duplicate, and remove standard days, then assign any template to each weekday
 - Full-block plan editing with no timeline or reporting clutter
 - Simple ✓ / × decisions for each work block, with corrections only when needed
 - Planned vs. actual tracking backed by compatible 15-minute data

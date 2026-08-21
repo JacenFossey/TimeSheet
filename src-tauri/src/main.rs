@@ -251,6 +251,10 @@ fn default_standard_plan() -> Value {
             "ontario": make_template("ontario_sales", "admin", "Flex, admin, and tomorrow prep"),
             "montreal": make_template("montreal_sales", "karl_vmi", "Flex / VMI / catch-up")
         },
+        "templateNames": {
+            "ontario": "Ontario day",
+            "montreal": "Montreal / Flex day"
+        },
         "week": {
             "mon": "ontario", "tue": "ontario", "wed": "montreal", "thu": "ontario", "fri": "ontario"
         }
@@ -371,11 +375,35 @@ fn validate_standard_plan(config: &Value) -> Result<(), String> {
         .get("templates")
         .and_then(Value::as_object)
         .ok_or("Standard-week templates are required.")?;
-    for template_id in ["ontario", "montreal"] {
-        let blocks = templates
+    if templates.is_empty() {
+        return Err("At least one standard day is required.".to_string());
+    }
+    if templates.len() > 20 {
+        return Err("You can create up to 20 standard days.".to_string());
+    }
+    let template_names = config
+        .get("templateNames")
+        .and_then(Value::as_object)
+        .ok_or("Standard-day names are required.")?;
+    for (template_id, value) in templates {
+        if template_id.len() > 64
+            || template_id.is_empty()
+            || !template_id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
+            return Err("A standard-day identifier is invalid.".to_string());
+        }
+        let name = template_names
             .get(template_id)
-            .and_then(Value::as_array)
-            .ok_or_else(|| format!("The {template_id} template is required."))?;
+            .and_then(Value::as_str)
+            .ok_or("Every standard day needs a name.")?;
+        if name.trim().is_empty() || name.chars().count() > 40 {
+            return Err("Standard-day names must be between 1 and 40 characters.".to_string());
+        }
+        let blocks = value
+            .as_array()
+            .ok_or_else(|| format!("The {template_id} template must contain a block list."))?;
         if blocks.len() > 32 {
             return Err("A standard day cannot contain more than 32 blocks.".to_string());
         }
@@ -423,7 +451,7 @@ fn validate_standard_plan(config: &Value) -> Result<(), String> {
         .ok_or("Standard-week assignments are required.")?;
     for day in ["mon", "tue", "wed", "thu", "fri"] {
         let template = week.get(day).and_then(Value::as_str).unwrap_or("");
-        if !matches!(template, "ontario" | "montreal") {
+        if !templates.contains_key(template) {
             return Err(format!("Choose a valid template for {day}."));
         }
     }
@@ -1050,6 +1078,22 @@ mod tests {
     #[test]
     fn default_standard_week_is_valid() {
         assert!(validate_standard_plan(&default_standard_plan()).is_ok());
+    }
+
+    #[test]
+    fn standard_week_accepts_additional_day_templates() {
+        let mut config = default_standard_plan();
+        config["templates"]["office"] = json!([]);
+        config["templateNames"]["office"] = json!("Office day");
+        config["week"]["fri"] = json!("office");
+        assert!(validate_standard_plan(&config).is_ok());
+    }
+
+    #[test]
+    fn standard_week_rejects_unknown_weekday_assignments() {
+        let mut config = default_standard_plan();
+        config["week"]["fri"] = json!("missing");
+        assert!(validate_standard_plan(&config).is_err());
     }
 
     #[test]

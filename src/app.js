@@ -21,7 +21,7 @@
   let categoryMap = {};
   let standardConfig = null;
   let standardDraft = null;
-  let activeStandardTemplate = 'ontario';
+  let activeStandardTemplate = null;
   let dayData = {};
   let editorBlocks = [];
   let correctionRange = null;
@@ -83,6 +83,32 @@
     return categories.filter(item => item.id !== 'none' && !item.archived);
   }
 
+  function defaultTemplateName(templateId) {
+    if (templateId === 'ontario') return 'Ontario day';
+    if (templateId === 'montreal') return 'Montreal / Flex day';
+    return templateId.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+  }
+
+  function normalizeStandardConfig(config) {
+    const normalized = config && typeof config === 'object' ? config : {};
+    normalized.templates = normalized.templates && typeof normalized.templates === 'object' ? normalized.templates : {};
+    normalized.templateNames = normalized.templateNames && typeof normalized.templateNames === 'object' ? normalized.templateNames : {};
+    Object.keys(normalized.templates).forEach(templateId => {
+      if (!Array.isArray(normalized.templates[templateId])) normalized.templates[templateId] = [];
+      if (!String(normalized.templateNames[templateId] || '').trim()) normalized.templateNames[templateId] = defaultTemplateName(templateId);
+    });
+    normalized.week = normalized.week && typeof normalized.week === 'object' ? normalized.week : {};
+    const firstTemplate = Object.keys(normalized.templates)[0];
+    ['mon', 'tue', 'wed', 'thu', 'fri'].forEach(day => {
+      if (!normalized.templates[normalized.week[day]]) normalized.week[day] = firstTemplate;
+    });
+    return normalized;
+  }
+
+  function templateName(config, templateId) {
+    return config?.templateNames?.[templateId] || defaultTemplateName(templateId || 'standard_day');
+  }
+
   function standardPlan(dateString) {
     const day = dateObject(dateString).getDay();
     if (day === 0 || day === 6) return [];
@@ -102,7 +128,7 @@
     if (day === 0 || day === 6) return 'Weekend';
     const weekdayKeys = ['', 'mon', 'tue', 'wed', 'thu', 'fri'];
     const templateId = standardConfig?.week?.[weekdayKeys[day]] || (day === 3 ? 'montreal' : 'ontario');
-    return templateId === 'montreal' ? 'Montreal / Flex day' : 'Ontario sales day';
+    return templateName(standardConfig, templateId);
   }
 
   function groupedBlocks(data, side) {
@@ -637,11 +663,55 @@
     }
   }
 
+  function renderWeekAssignments() {
+    const assignments = { weekMon: 'mon', weekTue: 'tue', weekWed: 'wed', weekThu: 'thu', weekFri: 'fri' };
+    const templateIds = Object.keys(standardDraft.templates);
+    Object.entries(assignments).forEach(([elementId, day]) => {
+      const select = $(elementId);
+      select.innerHTML = '';
+      templateIds.forEach(templateId => {
+        const option = document.createElement('option');
+        option.value = templateId;
+        option.textContent = templateName(standardDraft, templateId);
+        option.selected = standardDraft.week[day] === templateId;
+        select.appendChild(option);
+      });
+      select.onchange = () => { standardDraft.week[day] = select.value; };
+    });
+  }
+
   function renderStandardPlanSettings() {
     if (!standardDraft) return;
-    $('ontarioTemplateTab').classList.toggle('active', activeStandardTemplate === 'ontario');
-    $('montrealTemplateTab').classList.toggle('active', activeStandardTemplate === 'montreal');
-    const blocks = standardDraft.templates[activeStandardTemplate];
+    const templateIds = Object.keys(standardDraft.templates);
+    if (!standardDraft.templates[activeStandardTemplate]) activeStandardTemplate = templateIds[0] || null;
+
+    const tabs = $('standardTemplateTabs');
+    tabs.innerHTML = '';
+    templateIds.forEach(templateId => {
+      const tab = document.createElement('button');
+      tab.className = `btn template-tab${activeStandardTemplate === templateId ? ' active' : ''}`;
+      tab.textContent = templateName(standardDraft, templateId);
+      tab.addEventListener('click', () => { activeStandardTemplate = templateId; renderStandardPlanSettings(); });
+      tabs.appendChild(tab);
+    });
+
+    const name = $('standardTemplateName');
+    name.disabled = !activeStandardTemplate;
+    name.value = activeStandardTemplate ? templateName(standardDraft, activeStandardTemplate) : '';
+    name.oninput = () => {
+      if (!activeStandardTemplate) return;
+      standardDraft.templateNames[activeStandardTemplate] = name.value;
+      const activeTab = [...tabs.children].find((_, index) => templateIds[index] === activeStandardTemplate);
+      if (activeTab) activeTab.textContent = name.value || 'Unnamed day';
+      document.querySelectorAll('.week-template').forEach(select => {
+        const option = [...select.options].find(item => item.value === activeStandardTemplate);
+        if (option) option.textContent = name.value || 'Unnamed day';
+      });
+    };
+    $('removeStandardTemplateBtn').disabled = templateIds.length <= 1;
+    $('addStandardBlockBtn').disabled = !activeStandardTemplate;
+
+    const blocks = activeStandardTemplate ? standardDraft.templates[activeStandardTemplate] : [];
     const container = $('standardTemplateRows');
     container.innerHTML = '';
     if (!blocks.length) {
@@ -684,22 +754,49 @@
       container.appendChild(row);
     });
 
-    const assignments = { weekMon: 'mon', weekTue: 'tue', weekWed: 'wed', weekThu: 'thu', weekFri: 'fri' };
-    Object.entries(assignments).forEach(([elementId, day]) => {
-      const select = $(elementId);
-      select.innerHTML = '';
-      [['ontario', 'Ontario day'], ['montreal', 'Montreal / Flex']].forEach(([value, label]) => {
-        const option = document.createElement('option');
-        option.value = value;
-        option.textContent = label;
-        option.selected = standardDraft.week[day] === value;
-        select.appendChild(option);
-      });
-      select.onchange = () => { standardDraft.week[day] = select.value; };
+    renderWeekAssignments();
+  }
+
+  function newTemplateId() {
+    let id = `day_${Date.now()}`;
+    while (standardDraft.templates[id]) id += '_1';
+    return id;
+  }
+
+  function addStandardTemplate(copyCurrent = false) {
+    if (Object.keys(standardDraft.templates).length >= 20) {
+      setStatus('standardPlanStatus', 'You can create up to 20 standard days.', true);
+      return;
+    }
+    const templateId = newTemplateId();
+    const source = copyCurrent && activeStandardTemplate ? standardDraft.templates[activeStandardTemplate] : [];
+    standardDraft.templates[templateId] = structuredClone(source);
+    standardDraft.templateNames[templateId] = copyCurrent
+      ? `${templateName(standardDraft, activeStandardTemplate).slice(0, 35)} copy`
+      : 'New standard day';
+    activeStandardTemplate = templateId;
+    renderStandardPlanSettings();
+    $('standardTemplateName').select();
+  }
+
+  function removeStandardTemplate() {
+    const templateIds = Object.keys(standardDraft.templates);
+    if (!activeStandardTemplate || templateIds.length <= 1) return;
+    const name = templateName(standardDraft, activeStandardTemplate);
+    if (!window.confirm(`Remove “${name}”? Weekdays using it will be reassigned to another standard day.`)) return;
+    delete standardDraft.templates[activeStandardTemplate];
+    delete standardDraft.templateNames[activeStandardTemplate];
+    const replacement = Object.keys(standardDraft.templates)[0];
+    Object.keys(standardDraft.week).forEach(day => {
+      if (standardDraft.week[day] === activeStandardTemplate) standardDraft.week[day] = replacement;
     });
+    activeStandardTemplate = replacement;
+    renderStandardPlanSettings();
+    setStatus('standardPlanStatus', 'Standard day removed. Click Save standard week to keep this change.');
   }
 
   function addStandardBlock() {
+    if (!activeStandardTemplate) return;
     const blocks = standardDraft.templates[activeStandardTemplate];
     const lastEnd = blocks.length ? Math.max(...blocks.map(block => keyToMinutes(block.end))) : 480;
     const start = lastEnd < END - STEP ? lastEnd : 480;
@@ -713,7 +810,11 @@
   }
 
   function validateStandardTemplates() {
-    for (const templateId of ['ontario', 'montreal']) {
+    const templateIds = Object.keys(standardDraft.templates);
+    if (!templateIds.length) return 'Create at least one standard day.';
+    if (templateIds.length > 20) return 'You can create up to 20 standard days.';
+    for (const templateId of templateIds) {
+      if (!String(standardDraft.templateNames[templateId] || '').trim()) return 'Every standard day needs a name.';
       const blocks = standardDraft.templates[templateId];
       blocks.sort((a, b) => keyToMinutes(a.start) - keyToMinutes(b.start));
       for (let index = 0; index < blocks.length; index++) {
@@ -725,6 +826,9 @@
   }
 
   async function saveStandardWeek() {
+    Object.keys(standardDraft.templateNames).forEach(templateId => {
+      standardDraft.templateNames[templateId] = String(standardDraft.templateNames[templateId]).trim();
+    });
     const validationError = validateStandardTemplates();
     if (validationError) {
       setStatus('standardPlanStatus', validationError, true);
@@ -752,15 +856,15 @@
   function archiveCategory(id) {
     const item = categories.find(candidate => candidate.id === id);
     if (!item) return;
-    const affectedBlocks = ['ontario', 'montreal']
-      .flatMap(templateId => standardDraft.templates[templateId])
+    const affectedBlocks = Object.values(standardDraft.templates)
+      .flatMap(blocks => blocks)
       .filter(block => block.cat === id).length;
     const consequence = affectedBlocks
       ? ` ${affectedBlocks} standard-plan block${affectedBlocks === 1 ? '' : 's'} using it will also be removed.`
       : '';
     if (!window.confirm(`Remove “${item.label}”? Historical reports will keep its name.${consequence}`)) return;
     item.archived = true;
-    ['ontario', 'montreal'].forEach(templateId => {
+    Object.keys(standardDraft.templates).forEach(templateId => {
       standardDraft.templates[templateId] = standardDraft.templates[templateId].filter(block => block.cat !== id);
     });
     renderCategorySettings();
@@ -830,6 +934,9 @@
       return;
     }
     categories.forEach(item => { item.label = item.label.trim(); });
+    Object.keys(standardDraft.templateNames).forEach(templateId => {
+      standardDraft.templateNames[templateId] = String(standardDraft.templateNames[templateId]).trim();
+    });
     try {
       const validationError = validateStandardTemplates();
       if (validationError) {
@@ -900,8 +1007,9 @@
     $('thisWeekBtn').addEventListener('click', () => { weekAnchor = mondayOf(todayString()); renderReport(); });
     $('emailWeekBtn').addEventListener('click', emailWeek);
     $('exportWeekBtn').addEventListener('click', exportWeek);
-    $('ontarioTemplateTab').addEventListener('click', () => { activeStandardTemplate = 'ontario'; renderStandardPlanSettings(); });
-    $('montrealTemplateTab').addEventListener('click', () => { activeStandardTemplate = 'montreal'; renderStandardPlanSettings(); });
+    $('addStandardTemplateBtn').addEventListener('click', () => addStandardTemplate(false));
+    $('duplicateStandardTemplateBtn').addEventListener('click', () => addStandardTemplate(true));
+    $('removeStandardTemplateBtn').addEventListener('click', removeStandardTemplate);
     $('addStandardBlockBtn').addEventListener('click', addStandardBlock);
     $('saveStandardPlanBtn').addEventListener('click', saveStandardWeek);
     $('addCategoryBtn').addEventListener('click', addCategory);
@@ -921,11 +1029,14 @@
   }
 
   async function init() {
-    [categories, standardConfig] = await Promise.all([
+    const loaded = await Promise.all([
       window.ts.loadCategories(),
       window.ts.loadStandardPlan(),
     ]);
+    categories = loaded[0];
+    standardConfig = normalizeStandardConfig(loaded[1]);
     standardDraft = structuredClone(standardConfig);
+    activeStandardTemplate = Object.keys(standardDraft.templates)[0] || null;
     categoryMap = Object.fromEntries(categories.map(item => [item.id, item]));
     bindEvents();
     await Promise.all([loadCurrentDay(), loadEmailSettings()]);

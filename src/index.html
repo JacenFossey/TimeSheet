@@ -99,8 +99,11 @@
   .settings-grid { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(300px,.8fr); gap: 16px; align-items: start; }
   .settings-wide { grid-column: 1 / -1; }
   .settings-body { padding: 16px 20px 20px; }
-  .template-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .template-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .template-tabs { display: flex; align-items: center; gap: 8px; flex: 1 1 360px; flex-wrap: wrap; }
   .template-tab.active { background: var(--brand-soft); border-color: transparent; color: var(--brand-dark); }
+  .template-details { display: flex; align-items: end; gap: 8px; margin-bottom: 12px; }
+  .template-name { max-width: 320px; }
   .standard-editor { border: 1px solid var(--border); border-radius: 12px; background: var(--surface-soft); padding: 6px 12px; }
   .week-assignment { margin-top: 18px; }
   .week-assignment-title { font-size: 11px; font-weight: 750; margin-bottom: 8px; }
@@ -161,9 +164,10 @@
       <section class="view" id="view-settings">
         <div class="settings-grid">
           <div class="section-card settings-wide">
-            <div class="section-head"><div><div class="section-title">Standard week</div><div class="section-desc">Edit the two reusable day templates, then choose which one each weekday uses.</div></div></div>
+            <div class="section-head"><div><div class="section-title">Standard week</div><div class="section-desc">Create reusable day templates, then mix and match them across the week.</div></div></div>
             <div class="settings-body">
-              <div class="template-bar"><button class="btn template-tab active" id="ontarioTemplateTab">Ontario day</button><button class="btn template-tab" id="montrealTemplateTab">Montreal / Flex day</button><span style="flex:1"></span><button class="btn small" id="addStandardBlockBtn">+ Add block</button></div>
+              <div class="template-bar"><div class="template-tabs" id="standardTemplateTabs"></div><button class="btn small" id="addStandardTemplateBtn">+ New day</button><button class="btn small" id="duplicateStandardTemplateBtn">Duplicate day</button></div>
+              <div class="template-details"><div class="form-group template-name" style="margin:0;flex:1"><label class="form-label" for="standardTemplateName">Day name</label><input class="field" id="standardTemplateName" maxlength="40"></div><button class="btn small danger" id="removeStandardTemplateBtn">Remove day</button><span style="flex:1"></span><button class="btn small" id="addStandardBlockBtn">+ Add block</button></div>
               <div class="standard-editor" id="standardTemplateRows"></div>
               <div class="week-assignment"><div class="week-assignment-title">Weekday assignments</div><div class="weekday-map">
                 <div class="weekday-item"><label for="weekMon">Monday</label><select class="field week-template" id="weekMon"></select></div>
