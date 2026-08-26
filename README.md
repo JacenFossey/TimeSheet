@@ -13,6 +13,7 @@ A local desktop timesheet app built with Tauri v2 (native WebView2).
 - Minimal 15-minute ✓ / × reminders; × opens the correction form in the app
 - Weekly dashboard comparing the plan with logged time and clearly identifying unlogged gaps
 - Daily and weekly emails based only on actual logged time and current category names
+- Copy a plain-text daily activity report for pasting into an email without SendGrid
 - One-click CSV export for the selected week
 - Weekly report email through SendGrid
 - Data stored locally as one JSON file per day under `%AppData%\Timesheet\days`

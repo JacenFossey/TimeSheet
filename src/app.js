@@ -653,6 +653,42 @@
     }
   }
 
+  async function writeClipboard(text) {
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return;
+      } catch {
+        // Fall back for WebView installations where clipboard permission is unavailable.
+      }
+    }
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand('copy');
+    textarea.remove();
+    if (!copied) throw new Error('Could not access the clipboard.');
+  }
+
+  async function copyDailyReport() {
+    const button = $('copyDailyReportBtn');
+    button.disabled = true;
+    setStatus('dailyReportStatus', 'Copying daily category breakdown…');
+    try {
+      const text = await window.ts.getDailyReportText(currentDate);
+      await writeClipboard(text);
+      setStatus('dailyReportStatus', 'Daily report copied to the clipboard.');
+    } catch (error) {
+      setStatus('dailyReportStatus', String(error), true);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
   async function exportWeek() {
     setStatus('reportStatus', 'Choose where to save the report…');
     try {
@@ -993,6 +1029,7 @@
     $('datePicker').addEventListener('change', event => { if (event.target.value) { currentDate = event.target.value; loadCurrentDay(); } event.target.hidden = true; });
     $('setupWeekBtn').addEventListener('click', setupWeek);
     $('sendDailyReportBtn').addEventListener('click', emailDailyReport);
+    $('copyDailyReportBtn').addEventListener('click', copyDailyReport);
     $('editPlanBtn').addEventListener('click', openPlanEditor);
     $('closeEditor').addEventListener('click', closePlanEditor);
     $('cancelEditor').addEventListener('click', closePlanEditor);

@@ -26,6 +26,7 @@
     loadEmailSettings: () => invoke('load_email_settings'),
     saveEmailSettings: (from, to, apiKey) =>
       invoke('save_email_settings', { from, to, apiKey }),
+    getDailyReportText: (date) => invoke('get_daily_report_text', { date }),
     sendDailyReport: (date) => invoke('send_daily_report_email', { date }),
     sendWeeklyReport: (from, to) => invoke('send_weekly_report_email', { from, to }),
 

@@ -571,6 +571,34 @@ fn daily_category_counts(day: &Value) -> std::collections::BTreeMap<String, usiz
     counts
 }
 
+fn daily_report_to_text_with_labels(
+    date: &str,
+    day: &Value,
+    labels: &std::collections::HashMap<String, String>,
+) -> String {
+    let counts = daily_category_counts(day);
+    let total_hours = counts.values().sum::<usize>() as f64 * 0.25;
+    let mut sorted: Vec<_> = counts.iter().collect();
+    sorted.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
+
+    let mut text = format!(
+        "Daily activity report — {date}\nTotal logged: {total_hours:.1}h\n\nTime by category:\n"
+    );
+    if sorted.is_empty() {
+        text.push_str("No work logged.\n");
+    } else {
+        for (id, count) in sorted {
+            let label = labels.get(id).map(String::as_str).unwrap_or(id);
+            text.push_str(&format!("{label}: {:.1}h\n", *count as f64 * 0.25));
+        }
+    }
+    text
+}
+
+fn daily_report_to_text(date: &str, day: &Value) -> String {
+    daily_report_to_text_with_labels(date, day, &cat_labels())
+}
+
 fn daily_report_to_html(date: &str, day: &Value) -> String {
     let labels = cat_labels();
     let counts = daily_category_counts(day);
@@ -765,6 +793,12 @@ fn send_daily_report_blocking(date: &str) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn get_daily_report_text(date: String) -> Result<String, String> {
+    let day = read_day(&date)?;
+    Ok(daily_report_to_text(&date, &day))
+}
+
+#[tauri::command]
 async fn send_daily_report_email(date: String) -> Result<String, String> {
     // async command → runs on the tokio pool, not the main thread, so the blocking
     // SMTP send doesn't freeze the UI. ponytail: a rare single-user send; not worth
@@ -917,6 +951,7 @@ fn main() {
             export_json,
             load_email_settings,
             save_email_settings,
+            get_daily_report_text,
             send_daily_report_email,
             send_weekly_report_email,
             submit_reminder,
@@ -1049,10 +1084,32 @@ mod tests {
     }
 
     #[test]
+    fn copied_daily_report_summarizes_only_actual_time() {
+        let day = json!({
+            "08:00": { "actual": { "cat": "ontario_sales", "text": "Calls" } },
+            "08:15": { "actual": { "cat": "ontario_sales", "text": "Calls" } },
+            "08:30": { "planned": { "cat": "meetings", "text": "Unlogged meeting" } }
+        });
+        let labels = std::collections::HashMap::from([
+            ("ontario_sales".to_string(), "Ontario Sales".to_string()),
+            ("meetings".to_string(), "Meetings".to_string()),
+        ]);
+        let text = daily_report_to_text_with_labels("2026-07-07", &day, &labels);
+        assert!(text.contains("Daily activity report — 2026-07-07"));
+        assert!(text.contains("Total logged: 0.5h"));
+        assert!(text.contains("Ontario Sales: 0.5h"));
+        assert!(!text.contains("Meetings:"));
+        assert!(!text.contains("Unlogged meeting"));
+    }
+
+    #[test]
     fn daily_report_handles_zero_hours() {
         let html = daily_report_to_html("2026-07-07", &json!({}));
         assert!(html.contains("0.0h"));
         assert!(html.contains("No work logged."));
+        let text = daily_report_to_text("2026-07-07", &json!({}));
+        assert!(text.contains("Total logged: 0.0h"));
+        assert!(text.contains("No work logged."));
     }
 
     #[test]
