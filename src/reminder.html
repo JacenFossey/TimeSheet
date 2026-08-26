@@ -4,341 +4,140 @@
 <meta charset="UTF-8">
 <title>Timesheet Reminder</title>
 <style>
-  :root {
-    --bg: #1a1d27;
-    --surface: #22263a;
-    --border: #2e3350;
-    --text: #e2e8f0;
-    --text-muted: #8892a4;
-    --accent: #4f8ef7;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    font-size: 13px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    overflow: hidden;
-    user-select: none;
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 14px 8px;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);
-    -webkit-app-region: drag;
-  }
-  .header-left { display: flex; align-items: center; gap: 8px; }
-  .pulse {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: var(--accent);
-    animation: pulse 1.5s infinite;
-    flex-shrink: 0;
-  }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: .5; transform: scale(.8); }
-  }
-  .header-title { font-size: 12px; font-weight: 700; color: var(--text); }
-  .header-time  { font-size: 11px; color: var(--accent); font-weight: 600; }
-  .close-btn {
-    background: none; border: none; color: var(--text-muted); cursor: pointer;
-    font-size: 14px; padding: 2px 5px; border-radius: 4px; line-height: 1;
-    -webkit-app-region: no-drag;
-  }
-  .close-btn:hover { background: rgba(239,68,68,.2); color: #ef4444; }
-
-  .body { padding: 12px 14px; flex: 1; display: flex; flex-direction: column; gap: 10px; }
-
-  .planned-row {
-    display: flex; align-items: flex-start; gap: 8px;
-    background: rgba(255,255,255,.04); border: 1px solid var(--border);
-    border-radius: 6px; padding: 7px 10px; font-size: 11px;
-  }
-  .planned-label { color: var(--text-muted); white-space: nowrap; padding-top: 1px; }
-  .planned-text  { color: var(--text); flex: 1; }
-
-  .next-row {
-    display: flex; align-items: flex-start; gap: 8px;
-    padding: 2px 2px 0; font-size: 11px;
-  }
-  .next-label { color: var(--accent); white-space: nowrap; padding-top: 1px; font-weight: 600; }
-  .next-text  { color: var(--text-muted); flex: 1; }
-
-  .input-row { display: flex; align-items: center; gap: 8px; }
-  .cat-btn {
-    width: 14px; height: 14px; border-radius: 50%; border: none;
-    cursor: pointer; flex-shrink: 0; transition: transform .1s;
-  }
-  .cat-btn:hover { transform: scale(1.25); }
-
-  .actual-input {
-    flex: 1; background: var(--surface); border: 1px solid var(--border);
-    color: var(--text); border-radius: 6px; padding: 6px 10px;
-    font-size: 13px; font-family: inherit; outline: none;
-  }
-  .actual-input:focus { border-color: var(--accent); }
-  .actual-input::placeholder { color: var(--text-muted); opacity: .6; }
-
-  .footer { display: flex; gap: 8px; justify-content: flex-end; padding: 0 14px 12px; }
-  .skip-btn {
-    background: none; border: 1px solid var(--border); color: var(--text-muted);
-    border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; font-family: inherit;
-  }
-  .skip-btn:hover { border-color: var(--accent); color: var(--text); }
-  .save-btn {
-    background: var(--accent); color: #fff; border: none;
-    border-radius: 6px; padding: 5px 16px; font-size: 12px; font-weight: 600;
-    cursor: pointer; font-family: inherit;
-  }
-  .save-btn:hover { opacity: .85; }
-
-  /* category picker */
-  .cat-picker {
-    position: fixed; z-index: 999; background: #22263a;
-    border: 1px solid var(--border); border-radius: 8px;
-    padding: 8px; display: none; flex-direction: column; gap: 3px;
-    box-shadow: 0 6px 20px rgba(0,0,0,.5); min-width: 140px;
-    overflow-y: auto;
-  }
-  .cat-picker.open { display: flex; }
-  .cat-opt {
-    display: flex; align-items: center; gap: 7px; padding: 4px 7px;
-    border-radius: 5px; cursor: pointer; font-size: 12px; color: var(--text);
-    transition: background .1s; border: 1px solid transparent;
-  }
-  .cat-opt:hover { background: var(--border); }
-  .cat-opt.selected { border-color: rgba(255,255,255,.15); background: rgba(255,255,255,.06); }
-  .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
-  .cat-picker::-webkit-scrollbar { width: 6px; }
-  .cat-picker::-webkit-scrollbar-track { background: transparent; }
-  .cat-picker::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-
-  /* countdown bar */
-  .countdown-bar {
-    height: 2px; background: var(--border); flex-shrink: 0;
-  }
-  .countdown-fill {
-    height: 100%; background: var(--accent); transition: width 1s linear;
-  }
+  :root { color-scheme: light; --bg:#fff; --surface:#f3f6f2; --border:#dce5df; --text:#20322a; --muted:#718078; --brand:#2f6f5e; --danger:#b94b56; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; font: 13px/1.4 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; user-select: none; display: flex; flex-direction: column; }
+  .countdown { height: 3px; background: var(--border); }
+  .countdown-fill { height: 100%; background: var(--brand); transition: width 1s linear; }
+  .body { flex: 1; padding: 17px 18px 12px; text-align: center; }
+  .time { color: var(--brand); font-size: 11px; font-weight: 750; margin-bottom: 6px; }
+  h1 { margin: 0 0 12px; font-size: 17px; letter-spacing: -.02em; }
+  .planned { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; color: var(--muted); }
+  .planned strong { display: block; color: var(--text); font-size: 13px; margin-bottom: 1px; }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 18px 18px; }
+  button { height: 48px; border-radius: 11px; border: 1px solid var(--border); background: white; cursor: pointer; font: 800 23px/1 "Segoe UI", sans-serif; transition: .15s ease; }
+  .yes { color: var(--brand); } .yes:hover { color: white; background: var(--brand); border-color: var(--brand); }
+  .no { color: var(--danger); } .no:hover { background: #f8e9eb; border-color: #e8bfc4; }
+  button:disabled { opacity: .45; cursor: default; }
+  .hint { display: block; font-size: 9px; font-weight: 650; margin-top: 4px; }
 </style>
 </head>
 <body>
-
-<div class="countdown-bar"><div class="countdown-fill" id="countdown" style="width:100%"></div></div>
-
-<div class="header">
-  <div class="header-left">
-    <div class="pulse"></div>
-    <span class="header-title">What did you do?</span>
-    <span class="header-time" id="slotTimeLabel"></span>
+  <div class="countdown"><div class="countdown-fill" id="countdown" style="width:100%"></div></div>
+  <div class="body">
+    <div class="time" id="slotTimeLabel"></div>
+    <h1>Did this go as planned?</h1>
+    <div class="planned"><strong id="plannedCategory">Nothing planned</strong><span id="plannedText">Use × to enter what you did.</span></div>
   </div>
-  <button class="close-btn" id="dismissBtn">✕</button>
-</div>
-
-<div class="body">
-  <div class="planned-row" id="plannedRow" style="display:none">
-    <span class="planned-label">Planned:</span>
-    <span class="planned-text" id="plannedText"></span>
+  <div class="actions">
+    <button class="yes" id="yesBtn" aria-label="Worked as planned">✓<span class="hint">As planned</span></button>
+    <button class="no" id="noBtn" aria-label="Enter different work">×<span class="hint">Something else</span></button>
   </div>
-
-  <div class="input-row">
-    <button class="cat-btn" id="catBtn" style="background:#2e3350" title="Set category"></button>
-    <input class="actual-input" id="actualInput" type="text" placeholder="Describe what you did…" autocomplete="off" autofocus>
-  </div>
-
-  <div class="next-row" id="nextRow" style="display:none">
-    <span class="next-label">Up next:</span>
-    <span class="next-text" id="nextText"></span>
-  </div>
-</div>
-
-<div class="footer">
-  <button class="skip-btn" id="skipBtn">Skip</button>
-  <button class="save-btn" id="saveBtn">Save</button>
-</div>
-
-<div class="cat-picker" id="catPicker"></div>
 
 <script src="ts.js"></script>
 <script>
-let slotKey      = null;
-let selectedCat  = 'none';
-let CATEGORIES   = [];
-let CAT_MAP      = {};
-let countdown    = 120;
-let countdownInt = null;
+(() => {
+  'use strict';
+  let slotKey = null;
+  let planned = null;
+  let countdown = 120;
+  let countdownTimer = null;
+  const appWindow = window.__TAURI__.window.getCurrentWindow();
+  const { LogicalSize, LogicalPosition } = window.__TAURI__.dpi;
+  const $ = id => document.getElementById(id);
 
-const appWin = window.__TAURI__.window.getCurrentWindow();
-const { LogicalSize, LogicalPosition } = window.__TAURI__.dpi;
-
-// Which 15-min block just finished — derived from the clock, same maths the old
-// main process used in fireReminder().
-function minutesToKey(m) {
-  return `${String(Math.floor(m / 60)).padStart(2,'0')}:${String(m % 60).padStart(2,'0')}`;
-}
-function slotInfoAt(min) {
-  if (min < 0) return null;
-  const h = Math.floor(min / 60), m = min % 60;
-  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return { key: minutesToKey(min), label: `${h12}:${String(m).padStart(2,'0')} ${h < 12 ? 'AM' : 'PM'}` };
-}
-// "7:00 – 7:15 AM" — collapse the meridiem when start and end share it.
-function blockLabel(startMin, endMin) {
-  const a = slotInfoAt(startMin), b = slotInfoAt(endMin);
-  if (!a) return '';
-  if (!b) return a.label;
-  const sameMeridiem = a.label.slice(-2) === b.label.slice(-2);
-  return `${sameMeridiem ? a.label.slice(0, -3) : a.label} – ${b.label}`;
-}
-function todayString() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
-
-async function init() {
-  const now    = new Date();
-  const curMin = Math.floor((now.getHours() * 60 + now.getMinutes()) / 15) * 15;
-  const slot   = slotInfoAt(curMin - 15);
-  if (!slot) { window.ts.dismissReminder(); return; }
-  const next   = slotInfoAt(curMin);
-  slotKey = slot.key;
-  document.getElementById('slotTimeLabel').textContent = blockLabel(curMin - 15, curMin);
-
-  CATEGORIES = await window.ts.loadCategories();
-  CAT_MAP    = Object.fromEntries(CATEGORIES.map(c => [c.id, c]));
-  buildPicker();
-
-  const dayData     = await window.ts.loadDay(todayString());
-  const plannedData = (dayData[slotKey] && dayData[slotKey].planned) || null;
-  const nextData    = (next && dayData[next.key] && dayData[next.key].planned) || null;
-
-  if (plannedData) {
-    document.getElementById('plannedRow').style.display = 'flex';
-    const pCat = CAT_MAP[plannedData.cat];
-    document.getElementById('plannedText').textContent =
-      (pCat && pCat.id !== 'none' ? `[${pCat.label}] ` : '') + (plannedData.text || '');
-    if (plannedData.cat && plannedData.cat !== 'none') setCategory(plannedData.cat);
-    if (plannedData.text) document.getElementById('actualInput').value = plannedData.text;
+  function minutesToKey(minutes) {
+    return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
   }
 
-  // "Up next" — planned entry for the slot now beginning
-  if (nextData && (nextData.text || (nextData.cat && nextData.cat !== 'none'))) {
-    document.getElementById('nextRow').style.display = 'flex';
-    const nCat = CAT_MAP[nextData.cat];
-    const timePrefix = next ? `${blockLabel(curMin, curMin + 15)} — ` : '';
-    document.getElementById('nextText').textContent =
-      timePrefix + (nCat && nCat.id !== 'none' ? `[${nCat.label}] ` : '') + (nextData.text || '');
+  function timeLabel(minutes) {
+    const hour = Math.floor(minutes / 60);
+    const minute = minutes % 60;
+    const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+    return `${hour12}:${String(minute).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`;
   }
 
-  const inp = document.getElementById('actualInput');
-  inp.focus(); inp.select();
-
-  startCountdown();
-  placeAndShow();
-}
-
-// Size to fit content (so the Skip/Save footer is never clipped) and anchor to
-// the bottom-right of the work area, then reveal. screen.avail* excludes the
-// taskbar — the Tauri equivalent of Electron's workAreaSize.
-// ponytail: uses the monitor the window was created on (primary).
-async function placeAndShow() {
-  await new Promise(r => requestAnimationFrame(r));
-  const W = 360;
-  const H = Math.min(Math.ceil(document.body.scrollHeight), screen.availHeight - 32);
-  await appWin.setSize(new LogicalSize(W, H));
-  await appWin.setPosition(new LogicalPosition(screen.availWidth - W - 16, screen.availHeight - H - 16));
-  await appWin.show();
-}
-
-init();
-
-function startCountdown() {
-  const fill = document.getElementById('countdown');
-  countdownInt = setInterval(() => {
-    countdown--;
-    fill.style.width = `${(countdown / 120) * 100}%`;
-    if (countdown <= 0) dismiss();
-  }, 1000);
-}
-
-function setCategory(id) {
-  selectedCat = id;
-  const cat = CAT_MAP[id];
-  if (cat) {
-    document.getElementById('catBtn').style.background = cat.color;
-    document.getElementById('catBtn').title = cat.label;
+  function todayString() {
+    const date = new Date();
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   }
-  document.querySelectorAll('.cat-opt').forEach(o =>
-    o.classList.toggle('selected', o.dataset.catId === id));
-}
 
-function buildPicker() {
-  const picker = document.getElementById('catPicker');
-  picker.innerHTML = '';
-  CATEGORIES.forEach(cat => {
-    const opt = document.createElement('div');
-    opt.className = 'cat-opt';
-    opt.dataset.catId = cat.id;
-    opt.innerHTML = `<span class="dot" style="background:${cat.color}"></span>${cat.label}`;
-    opt.addEventListener('click', () => { setCategory(cat.id); closePicker(); });
-    picker.appendChild(opt);
+  async function placeAndShow() {
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    const width = 320;
+    const height = Math.ceil(document.body.scrollHeight);
+    await appWindow.setSize(new LogicalSize(width, height));
+    await appWindow.setPosition(new LogicalPosition(screen.availWidth - width - 16, screen.availHeight - height - 16));
+    await appWindow.show();
+  }
+
+  function startCountdown() {
+    countdownTimer = window.setInterval(() => {
+      countdown -= 1;
+      $('countdown').style.width = `${countdown / 120 * 100}%`;
+      if (countdown <= 0) window.ts.dismissReminder();
+    }, 1000);
+  }
+
+  async function init() {
+    const now = new Date();
+    const currentMinutes = Math.floor((now.getHours() * 60 + now.getMinutes()) / 15) * 15;
+    const start = currentMinutes - 15;
+    if (start < 0) { await window.ts.dismissReminder(); return; }
+    slotKey = minutesToKey(start);
+    $('slotTimeLabel').textContent = `${timeLabel(start)} – ${timeLabel(currentMinutes)}`;
+
+    const [day, categories] = await Promise.all([
+      window.ts.loadDay(todayString()),
+      window.ts.loadCategories(),
+    ]);
+    planned = day[slotKey]?.planned || null;
+    const categoryMap = Object.fromEntries(categories.map(category => [category.id, category]));
+    if (planned && (planned.cat !== 'none' || planned.text)) {
+      $('plannedCategory').textContent = categoryMap[planned.cat]?.label || planned.cat || 'Planned work';
+      $('plannedText').textContent = planned.text || 'Planned work';
+    } else {
+      $('yesBtn').disabled = true;
+    }
+    startCountdown();
+    await placeAndShow();
+  }
+
+  $('yesBtn').addEventListener('click', async () => {
+    window.clearInterval(countdownTimer);
+    $('yesBtn').disabled = true;
+    $('noBtn').disabled = true;
+    try {
+      await window.ts.submitReminder(slotKey, planned.cat || 'none', planned.text || '');
+    } catch (error) {
+      $('yesBtn').disabled = false;
+      $('noBtn').disabled = false;
+      $('plannedText').textContent = String(error);
+      startCountdown();
+    }
   });
-}
 
-document.getElementById('catBtn').addEventListener('click', e => {
-  e.stopPropagation();
-  const picker = document.getElementById('catPicker');
-  if (picker.classList.contains('open')) { closePicker(); return; }
+  $('noBtn').addEventListener('click', async () => {
+    window.clearInterval(countdownTimer);
+    $('yesBtn').disabled = true;
+    $('noBtn').disabled = true;
+    try {
+      await window.ts.openReminderCorrection(slotKey);
+    } catch (error) {
+      $('yesBtn').disabled = false;
+      $('noBtn').disabled = false;
+      $('plannedText').textContent = String(error);
+      startCountdown();
+    }
+  });
 
-  const rect   = e.currentTarget.getBoundingClientRect();
-  const margin = 6;
-  const spaceBelow = window.innerHeight - rect.bottom - margin;
-  const spaceAbove = rect.top - margin;
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') window.ts.dismissReminder();
+  });
 
-  // Open in whichever direction has more room, and cap height to that space
-  // so the list scrolls instead of being clipped by the (fixed-size) window.
-  picker.style.left = rect.left + 'px';
-  if (spaceBelow >= spaceAbove) {
-    picker.style.top       = (rect.bottom + 4) + 'px';
-    picker.style.bottom    = 'auto';
-    picker.style.maxHeight = Math.max(spaceBelow, 80) + 'px';
-  } else {
-    picker.style.bottom    = (window.innerHeight - rect.top + 4) + 'px';
-    picker.style.top       = 'auto';
-    picker.style.maxHeight = Math.max(spaceAbove, 80) + 'px';
-  }
-  picker.classList.add('open');
-});
-document.addEventListener('click', () => closePicker());
-function closePicker() { document.getElementById('catPicker').classList.remove('open'); }
-
-async function save() {
-  clearInterval(countdownInt);
-  const text = document.getElementById('actualInput').value.trim();
-  await window.ts.submitReminder(slotKey, selectedCat, text);
-}
-
-function dismiss() {
-  clearInterval(countdownInt);
-  window.ts.dismissReminder();
-}
-
-document.getElementById('saveBtn').addEventListener('click', save);
-document.getElementById('skipBtn').addEventListener('click', dismiss);
-document.getElementById('dismissBtn').addEventListener('click', dismiss);
-document.getElementById('actualInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter') save();
-  if (e.key === 'Escape') dismiss();
-});
+  init().catch(error => { $('plannedText').textContent = String(error); placeAndShow(); });
+})();
 </script>
 </body>
 </html>

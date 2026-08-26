@@ -4,13 +4,22 @@ A local desktop timesheet app built with Tauri v2 (native WebView2).
 
 ## Features
 
-- 15-minute time slots from 4:30 AM – 10:30 PM
-- Planned vs. actual tracking with colour-coded categories
-- 15-minute popup reminders to log what you just did
-- Stats dashboard (week / month / 3M / 6M / year / all-time)
-- CSV and JSON export with custom date ranges
+- Focus view showing the current work block and today's progress
+- One-click standard workweek plan with reusable day templates
+- Create, name, duplicate, and remove standard days, then assign any template to each weekday
+- Full-block plan editing with no timeline or reporting clutter
+- Simple ✓ / × decisions for each work block, with corrections only when needed
+- Planned vs. actual tracking backed by compatible 15-minute data
+- Minimal 15-minute ✓ / × reminders; × opens the correction form in the app
+- Weekly dashboard comparing the plan with logged time and clearly identifying unlogged gaps
+- Daily and weekly emails based only on actual logged time and current category names
+- Copy a plain-text daily activity report for pasting into an email without SendGrid
+- One-click CSV export for the selected week
+- Weekly report email through SendGrid
 - Data stored locally as one JSON file per day under `%AppData%\Timesheet\days`
 - Auto-updates from GitHub releases
+
+The app uses a single calm, light interface designed around planning, doing, and reporting.
 
 ## Development
 

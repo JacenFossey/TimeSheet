@@ -13,8 +13,12 @@
     loadDay: (date) => invoke('load_day', { date }),
     loadRange: (from, to) => invoke('load_range', { from, to }),
     saveDay: (date, data) => invoke('save_day', { date, data }),
+    saveSlot: (date, slotKey, side, field, value) =>
+      invoke('save_slot', { date, slotKey, side, field, value }),
     loadCategories: () => invoke('load_categories'),
     saveCategories: (cats) => invoke('save_categories', { cats }),
+    loadStandardPlan: () => invoke('load_standard_plan'),
+    saveStandardPlan: (config) => invoke('save_standard_plan', { config }),
     exportData: (from, to) => invoke('export_csv', { from, to }),
     exportJson: (from, to) => invoke('export_json', { from, to }),
 
@@ -22,14 +26,18 @@
     loadEmailSettings: () => invoke('load_email_settings'),
     saveEmailSettings: (from, to, apiKey) =>
       invoke('save_email_settings', { from, to, apiKey }),
-    sendTimesheetEmail: (date) => invoke('send_timesheet_email', { date }),
+    getDailyReportText: (date) => invoke('get_daily_report_text', { date }),
+    sendDailyReport: (date) => invoke('send_daily_report_email', { date }),
+    sendWeeklyReport: (from, to) => invoke('send_weekly_report_email', { from, to }),
 
     // Reminder window
     submitReminder: (slotKey, cat, text) =>
       invoke('submit_reminder', { slotKey, cat, text }),
+    openReminderCorrection: (slotKey) => invoke('open_reminder_correction', { slotKey }),
     dismissReminder: () => getCurrentWindow().close(),
 
     onRefreshDay: (cb) => listen('refreshDay', () => cb()),
+    onCorrectSlot: (cb) => listen('correctSlot', event => cb(event.payload)),
 
     checkForUpdates: async () => {
       try {

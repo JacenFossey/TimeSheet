@@ -38,3 +38,6 @@ jobs:
 
       - name: Compile check
         run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Unit tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
